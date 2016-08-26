@@ -448,10 +448,10 @@ class ConvAutoencoderLayer(object):
 
 		train_fn = theano.function([self.input], cost, updates=updates)
 		loss = np.zeros((num_epochs,))
-		for epoch in tqdm(range(num_epochs)):
+		for epoch in range(num_epochs):
 			data_gen, data_gen_copy = tee(data_gen, 2)
 			loss_epoch = []
-			for batch in data_gen:
+			for batch in tqdm(data_gen):
 				loss_epoch.append(train_fn(batch))
 			loss[epoch] = np.mean(loss_epoch)
 
