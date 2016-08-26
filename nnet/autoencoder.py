@@ -453,6 +453,8 @@ class ConvAutoencoderLayer(object):
 			loss_epoch = []
 			for batch in tqdm(data_gen):
 				loss_epoch.append(train_fn(batch))
+				if verbose:
+					print('Batch loss: %.4f' % loss_epoch[loss_epoch.__len__() - 1])
 			loss[epoch] = np.mean(loss_epoch)
 
 			if verbose:
