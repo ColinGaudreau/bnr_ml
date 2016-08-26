@@ -5,6 +5,7 @@ import numpy as np
 from itertools import tee
 from collections import OrderedDict
 import pickle
+from tqdm import tqdm
 
 import pdb
 
@@ -447,7 +448,7 @@ class ConvAutoencoderLayer(object):
 
 		train_fn = theano.function([self.input], cost, updates=updates)
 		loss = np.zeros((num_epochs,))
-		for epoch in range(num_epochs):
+		for epoch in tqdm(range(num_epochs)):
 			data_gen, data_gen_copy = tee(data_gen, 2)
 			loss_epoch = []
 			for batch in data_gen:
