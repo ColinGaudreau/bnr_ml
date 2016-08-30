@@ -442,7 +442,7 @@ class ConvAutoencoderLayer(object):
 
 		cost = ((x - z)**2).sum(axis=(1,2,3)).mean()
 
-		if is not None:
+		if reg is not None:
 			if reg.lower() == 'l2':
 				cost += 0.5 * (T.sum(self.W**2) + T.sum(self.b**2) + T.sum(self.c**2)) # l2 regularization
 
@@ -454,7 +454,7 @@ class ConvAutoencoderLayer(object):
 
 		return cost, updates
 
-	def train(self, data_gen, num_epochs, lr=1e-5, momentum=0.9 verbose=True):
+	def train(self, data_gen, num_epochs, lr=1e-5, momentum=0.9, verbose=True):
 		print('Using cost function with l2 reg, and training via momentum method.')
 		cost, updates = self.get_cost_updates(lr, reg='l2') # change
 		updates = momentum(self.params, lr, momentum)
