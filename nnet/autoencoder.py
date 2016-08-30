@@ -359,12 +359,18 @@ class ConvAutoencoderLayer(object):
 		pool_shape=None,
 		input=None,
 		numpy_rng=None,
-		theano_rng=None
+		theano_rng=None,
+		W=None,
+		b=None,
+		c=None,
 	):
 		self.input_shape = input_shape
 		self.filter_shape = filter_shape
 		self.num_filters = num_filters
 		self.pool_shape = pool_shape
+		self.W = W
+		self.b = b
+		self.c = c
 		if input is None:
 			input = T.tensor4('input')
 		self.input = input
@@ -381,24 +387,27 @@ class ConvAutoencoderLayer(object):
 		self.params = [self.W, self.b, self.c]
 
 	def initialize_params(self):
-		initial_W = np.asarray(
-			self.numpy_rng.normal(
-				loc=0,
-				scale=0.01,
-				size=((self.num_filters,self.input_shape[1]) + self.filter_shape)
-				),
-			dtype=theano.config.floatX
-			)
-		self.W = theano.shared(value=initial_W, name='W', borrow=True)
-		self.b = theano.shared(
-			np.zeros(
-				(self.num_filters,),
+		if self.W is None:
+			initial_W = np.asarray(
+				self.numpy_rng.normal(
+					loc=0,
+					scale=0.01,
+					size=((self.num_filters,self.input_shape[1]) + self.filter_shape)
+					),
 				dtype=theano.config.floatX
-				),
-			name='b',
-			borrow=True
-			)
-		self.c = theano.shared(value=0., name='c', borrow=True)
+				)
+			self.W = theano.shared(value=initial_W, name='W', borrow=True)
+		if self.b is None:
+			self.b = theano.shared(
+				np.zeros(
+					(self.num_filters,),
+					dtype=theano.config.floatX
+					),
+				name='b',
+				borrow=True
+				)
+		if self.c is None:
+			self.c = theano.shared(value=0., name='c', borrow=True)
 
 	def get_encoder_output(self, input):
 		conv = T.nnet.conv2d(
