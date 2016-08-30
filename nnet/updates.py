@@ -2,7 +2,7 @@ import theano
 from theano import tensor as T
 
 def sgd(cost, params, lr=1e-3):
-	lr = T.cast(lr, dtype=theano.config.floatX)
+	lr = T.cast(theano.shared(lr, name='lr', borrow=True), dtype=theano.config.floatX)
 
 	gparams = T.grad(cost, params)
 	updates = OrderedDict()
@@ -13,8 +13,8 @@ def sgd(cost, params, lr=1e-3):
 	return updates
 
 def momentum(cost, params, lr=1e-4, momentum=.9):
-	momentum = T.cast(momentum, theano.config.floatX)
-	lr = T.cast(lr, dtype=theano.config.floatX)
+	momentum = T.cast(theano.shared(momentum, name='momentum', borrow=True), theano.config.floatX)
+	lr = T.cast(theano.shared(lr, name='lr', borrow=True), dtype=theano.config.floatX)
 
 	gparams = T.grad(cost, params)
 	updates = OrderedDict()
