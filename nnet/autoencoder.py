@@ -434,13 +434,18 @@ class ConvAutoencoderLayer(object):
 	def get_reconstructed_input(self, input):
 		return self.get_decoder_output(self.get_encoder_output(input))
 
-	def get_cost_updates(self, lr=1e-3, reg=None):
+	def get_cost_updates(self, lr=1e-3, type='l2', reg=None):
 		lr = T.cast(theano.shared(lr, name='lr', borrow=True), theano.config.floatX)
 
 		z = self.get_reconstructed_input(self.input)
 		x = self.input
 
-		cost = ((x - z)**2).sum(axis=(1,2,3)).mean()
+		if type.lower() == 'l2':
+			cost = ((x - z)**2).sum(axis=(1,2,3)).mean()
+		elif type.lower() == 'l1':
+			cost = (T.abs_(x - z)).sum(axis=(1,2,3)).mean()
+		else:
+			print('Not a cost function')
 
 		if reg is not None:
 			if reg.lower() == 'l2':
@@ -454,9 +459,9 @@ class ConvAutoencoderLayer(object):
 
 		return cost, updates
 
-	def train(self, data_gen, num_epochs, lr=1e-5, m=0.9, verbose=True):
+	def train(self, data_gen, num_epochs, cost_type='l2', lr=1e-5, m=0.9, verbose=True):
 		print('Using cost function with l2 reg, and training via momentum method.')
-		cost, updates = self.get_cost_updates(lr, reg='l2') # change
+		cost, updates = self.get_cost_updates(lr=lr, type=cost_type, reg='l2') # change
 		updates = momentum(cost, self.params, lr, m)
 
 		if verbose:
