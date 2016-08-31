@@ -364,6 +364,7 @@ class ConvAutoencoderLayer(object):
 		W=None,
 		b=None,
 		c=None,
+		batch_norm=False
 	):
 		self.input_shape = input_shape
 		self.filter_shape = filter_shape
@@ -372,6 +373,8 @@ class ConvAutoencoderLayer(object):
 		self.W = W
 		self.b = b
 		self.c = c
+		self.batch_norm = True
+
 		if input is None:
 			input = T.tensor4('input')
 		self.input = input
@@ -386,6 +389,10 @@ class ConvAutoencoderLayer(object):
 		self.initialize_params()
 
 		self.params = [self.W, self.b, self.c]
+
+		if batch_norm:
+			gamma_in = T.cast(theano.shared(np.ones((num_filters,)), name='gamma_in', borrow=True), theano.config.floatX)
+			gamma_out = T.cast(theano.shared(1., name='gamma_out', borrow=True), theano.config.floatX)
 
 	def initialize_params(self):
 		if self.W is None:
@@ -417,7 +424,14 @@ class ConvAutoencoderLayer(object):
 			filter_flip=False,
 			border_mode='valid'
 			)
-		output = T.nnet.sigmoid(conv + self.b.dimshuffle('x',0,'x','x'))
+		if self.batch_norm:
+			mu = T.mean(conv, axis=0, keepdims=True)
+			var = T.mean((conv - mu)**2, axis=0, keepdims=True)
+			output = (conv - mu) / T.sqrt(var + 1e-5) * self.gamma_in.dimshuffle('x',0,'x','x') + self.b.dimshuffle('x',0,'x','x')
+			output = T.nnet.sigmoid(output)
+		else:
+			output = T.nnet.sigmoid(conv + self.b.dimshuffle('x',0,'x','x'))
+
 		if self.pool_shape is not None:
 			output = max_pool_2d_same_size(output, self.pool_shape)
 		return output
@@ -429,7 +443,16 @@ class ConvAutoencoderLayer(object):
 			filter_flip=True,
 			border_mode='full'
 			)
-		return T.nnet.sigmoid(conv + self.c)
+
+		if self.batch_norm:
+			mu = T.mean(conv, axis=0, keepdims=True)
+			var = T.mean((conv-mu)**2, axsi=0, keepdims=True)
+			output = (conv - mu) / T.sqrt(var + 1e-5) * self.gamma_out + self.c
+			output = T.nnet.sigmoid(output)
+		else:
+			output = T.nnet.sigmoid(conv + self.c)
+
+		return output
 
 	def get_reconstructed_input(self, input):
 		return self.get_decoder_output(self.get_encoder_output(input))
