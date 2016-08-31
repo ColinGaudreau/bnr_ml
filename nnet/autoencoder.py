@@ -459,9 +459,9 @@ class ConvAutoencoderLayer(object):
 
 		return cost, updates
 
-	def train(self, data_gen, num_epochs, cost_type='l2', lr=1e-5, m=0.9, verbose=True):
+	def train(self, data_gen, num_epochs, cost_type='l2', lr=1e-5, m=0.9, reg='l2', verbose=True):
 		print('Using cost function with l2 reg, and training via momentum method.')
-		cost, updates = self.get_cost_updates(lr=lr, type=cost_type, reg='l2') # change
+		cost, updates = self.get_cost_updates(lr=lr, type=cost_type, reg=reg) # change
 		updates = momentum(cost, self.params, lr, m)
 
 		if verbose:
