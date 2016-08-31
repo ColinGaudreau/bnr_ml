@@ -5,6 +5,8 @@
 *.m~
 *.DS_Store
 
+**/*.pyc
+
 # executables
 *.out
 
