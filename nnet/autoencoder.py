@@ -373,7 +373,7 @@ class ConvAutoencoderLayer(object):
 		self.W = W
 		self.b = b
 		self.c = c
-		self.batch_norm = True
+		self.batch_norm = batch_norm
 
 		if input is None:
 			input = T.tensor4('input')
@@ -390,7 +390,7 @@ class ConvAutoencoderLayer(object):
 
 		self.params = [self.W, self.b, self.c]
 
-		if batch_norm:
+		if self.batch_norm:
 			gamma_in = T.cast(theano.shared(np.ones((num_filters,)), name='gamma_in', borrow=True), theano.config.floatX)
 			gamma_out = T.cast(theano.shared(1., name='gamma_out', borrow=True), theano.config.floatX)
 
