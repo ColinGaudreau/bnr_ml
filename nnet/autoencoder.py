@@ -471,9 +471,10 @@ class ConvAutoencoderLayer(object):
 		else:
 			print('Not a cost function')
 
-		if reg is not None:
-			reg = T.case(theano.shared(reg, name='reg', borrow=True), theano.config.floatX)
-			if reg.lower() == 'l2':
+		if reg_type is not None:
+			reg = T.cast(theano.shared(reg, name='reg', borrow=True), theano.config.floatX)
+			if reg_type.lower() == 'l2':
+				print('Using L2 regularization.')
 				cost += reg * (0.5 * (T.sum(self.W**2) + T.sum(self.b**2) + T.sum(self.c**2))) # l2 regularization
 
 		gparams = T.grad(cost, self.params)
@@ -485,14 +486,13 @@ class ConvAutoencoderLayer(object):
 		return cost, updates
 
 	def train(self, data_gen, num_epochs, cost='l2', lr=1e-5, m=0.9, reg_type='l2', reg=1.0, verbose=True):
-		print('Using cost function with l2 reg, and training via momentum method.')
 		cost_fn, updates = self.get_cost_updates(lr=lr, type=cost, reg_type=reg_type, reg=reg) # change
 		updates = momentum(cost_fn, self.params, lr, m)
 
 		if verbose:
 			print('Compiling training function...')
 
-		train_fn = theano.function([self.input], cost, updates=updates)
+		train_fn = theano.function([self.input], cost_fn, updates=updates)
 		loss = np.zeros((num_epochs,))
 		for epoch in range(num_epochs):
 			data_gen, data_gen_copy = tee(data_gen, 2)
