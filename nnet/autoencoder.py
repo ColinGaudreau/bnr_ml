@@ -391,8 +391,9 @@ class ConvAutoencoderLayer(object):
 		self.params = [self.W, self.b, self.c]
 
 		if self.batch_norm:
-			gamma_in = T.cast(theano.shared(np.ones((num_filters,)), name='gamma_in', borrow=True), theano.config.floatX)
-			gamma_out = T.cast(theano.shared(1., name='gamma_out', borrow=True), theano.config.floatX)
+			self.gamma_in = theano.shared(np.ones((num_filters,), dtype=theano.config.floatX), name='gamma_in', borrow=True)
+			self.gamma_out = theano.shared(1., name='gamma_out', borrow=True)
+			self.params.extend([self.gamma_in, self.gamma_out])
 
 	def initialize_params(self):
 		if self.W is None:
@@ -446,7 +447,7 @@ class ConvAutoencoderLayer(object):
 
 		if self.batch_norm:
 			mu = T.mean(conv, axis=0, keepdims=True)
-			var = T.mean((conv-mu)**2, axsi=0, keepdims=True)
+			var = T.mean((conv-mu)**2, axis=0, keepdims=True)
 			output = (conv - mu) / T.sqrt(var + 1e-5) * self.gamma_out + self.c
 			output = T.nnet.sigmoid(output)
 		else:
