@@ -468,6 +468,8 @@ class ConvAutoencoderLayer(object):
 			cost = ((x - z)**2).sum(axis=(1,2,3)).mean()
 		elif type.lower() == 'l1':
 			cost = (T.abs_(x - z)).sum(axis=(1,2,3)).mean()
+		elif type.lower() == 'kl':
+			cost =  (-x * (1 - x) * (T.log(1 - z) + T.log(z))).sum(axis=(1,2,3)).mean()
 		else:
 			print('Not a cost function')
 
