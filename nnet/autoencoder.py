@@ -461,15 +461,14 @@ class ConvAutoencoderLayer(object):
 	def get_cost_updates(self, lr=1e-3, type='l2', reg_type=None, reg=1.0):
 		lr = T.cast(theano.shared(lr, name='lr', borrow=True), theano.config.floatX)
 
-		z = self.get_reconstructed_input(self.input)
+		h = self.get_encoder_output(self.input) # in case were doing 
+		z = self.get_decoder_output(h)
 		x = self.input
 
 		if type.lower() == 'l2':
 			cost = ((x - z)**2).sum(axis=(1,2,3)).mean()
 		elif type.lower() == 'l1':
 			cost = (T.abs_(x - z)).sum(axis=(1,2,3)).mean()
-		elif type.lower() == 'kl':
-			cost =  (-x * (1 - x) * (T.log(1 - z) + T.log(z))).sum(axis=(1,2,3)).mean()
 		else:
 			print('Not a cost function')
 
@@ -478,6 +477,10 @@ class ConvAutoencoderLayer(object):
 			if reg_type.lower() == 'l2':
 				print('Using L2 regularization.')
 				cost += reg * (0.5 * (T.sum(self.W**2) + T.sum(self.b**2) + T.sum(self.c**2))) # l2 regularization
+			if reg_type.lower() == 'kl':
+				print('Using KL divergence of activation as a regularizer.')
+				kl =  reg * (T.log(reg) - T.log(h)) + (1 - reg) * (T.log(1 - reg) - T.log(1 - h))
+				cost += kl.sum(axis=(3,2,1)).mean()
 
 		gparams = T.grad(cost, self.params)
 
