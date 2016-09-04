@@ -467,6 +467,8 @@ class ConvAutoencoderLayer(object):
 		lr = T.cast(theano.shared(lr, name='lr', borrow=True), theano.config.floatX)
 
 		h = self.get_encoder_output(self.input) # in case were doing 
+		if self.pool_shape is not None:
+			h = pool_2d(h, self.pool_shape)
 		z = self.get_decoder_output(h)
 		x = self.input
 
