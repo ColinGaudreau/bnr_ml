@@ -458,7 +458,12 @@ class ConvAutoencoderLayer(object):
 	def get_reconstructed_input(self, input):
 		return self.get_decoder_output(self.get_encoder_output(input))
 
-	def get_cost_updates(self, lr=1e-3, type='l2', reg_type=None, reg=1.0):
+	def get_cost_updates(self,
+			lr=1e-3,
+			type='l2',
+			reg_type=None,
+			reg=1.0,
+			sparse=0.05):
 		lr = T.cast(theano.shared(lr, name='lr', borrow=True), theano.config.floatX)
 
 		h = self.get_encoder_output(self.input) # in case were doing 
@@ -479,8 +484,9 @@ class ConvAutoencoderLayer(object):
 				cost += reg * (0.5 * (T.sum(self.W**2) + T.sum(self.b**2) + T.sum(self.c**2))) # l2 regularization
 			if reg_type.lower() == 'kl':
 				print('Using KL divergence of activation as a regularizer.')
+				sparse = T.cast(theano.shared(sparse, name='sparse', borrow=True), theano.config.floatX)
 				kl =  reg * (T.log(reg) - T.log(h)) + (1 - reg) * (T.log(1 - reg) - T.log(1 - h))
-				cost += kl.sum(axis=(3,2,1)).mean()
+				cost += sparse * kl.mean()
 
 		gparams = T.grad(cost, self.params)
 
@@ -490,8 +496,17 @@ class ConvAutoencoderLayer(object):
 
 		return cost, updates
 
-	def train(self, data_gen, num_epochs, cost='l2', lr=1e-5, m=0.9, reg_type='l2', reg=1.0, verbose=True):
-		cost_fn, updates = self.get_cost_updates(lr=lr, type=cost, reg_type=reg_type, reg=reg) # change
+	def train(self,
+			data_gen,
+			num_epochs,
+			cost='l2',
+			lr=1e-5,
+			m=0.9,
+			reg_type='l2',
+			reg=1.0,
+			sparse=0.05,
+			verbose=True):
+		cost_fn, updates = self.get_cost_updates(lr=lr, type=cost, reg_type=reg_type, reg=reg, sparse=sparse) # change
 		updates = momentum(cost_fn, self.params, lr, m)
 
 		if verbose:
