@@ -466,10 +466,10 @@ class ConvAutoencoderLayer(object):
 			sparse=0.05):
 		lr = T.cast(theano.shared(lr, name='lr', borrow=True), theano.config.floatX)
 
-		h = self.get_encoder_output(self.input) # in case were doing 
+		h = self.get_encoder_output(self.input)
+		z = self.get_decoder_output(h) 
 		if self.pool_shape is not None:
 			h = pool_2d(h, self.pool_shape)
-		z = self.get_decoder_output(h)
 		x = self.input
 
 		if type.lower() == 'l2':
@@ -486,10 +486,9 @@ class ConvAutoencoderLayer(object):
 				cost += reg * (0.5 * (T.sum(self.W**2) + T.sum(self.b**2) + T.sum(self.c**2))) # l2 regularization
 			if reg_type.lower() == 'kl':
 				print('Using KL divergence of activation as a regularizer.')
-				sparse = theano.shared(sparse, name='sparse', borrow=True)
-				kl =  sparse * (T.log(sparse) - T.log(h)) + (1.0 - sparse) * (T.log(1.0 - sparse) - T.log(1.0 - h))
-				kl = T.cast(reg * kl.mean(), theano.config.floatX)
-				cost += kl
+				sparse = T.cast(theano.shared(sparse, name='sparse', borrow=True), theano.config.floatX)
+				kl =  sparse * (T.log(sparse) - T.log(h)) + (1 - sparse) * (T.log(1 - sparse) - T.log(1 - h))
+				cost += reg * kl.mean()
 
 		gparams = T.grad(cost, self.params)
 
