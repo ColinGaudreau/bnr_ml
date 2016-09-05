@@ -488,6 +488,7 @@ class ConvAutoencoderLayer(object):
 				print('Using KL divergence of activation as a regularizer.')
 				sparse = theano.shared(sparse, name='sparse', borrow=True)
 				kl =  sparse * (T.log(sparse) - T.log(h)) + (1.0 - sparse) * (T.log(1.0 - sparse) - T.log(1.0 - h))
+				kl = reg * kl.mean()
 				kl = T.cast(reg * kl.mean(), theano.config.floatX)
 				cost += kl
 
