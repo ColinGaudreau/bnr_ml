@@ -1,6 +1,6 @@
 import numpy as np
 import theano
-import theano.tensor as tensor
+from theano import tensor as T
 import lasagne
 import os
 from skimage.io import imread
@@ -19,6 +19,13 @@ def save_all_layers(network_output, dirname):
 			np.save(filename, weight)
 			wcnt += 1
 		lcnt += 1
+
+def meshgrid2D(arr1, arr2):
+    a,_ = theano.scan(
+        lambda x: [T.extra_ops.repeat(arr1[x], arr2.shape[0]), arr2],
+        sequences=T.arange(arr1.shape[0])
+    )
+    return a[0].flatten(), a[1].flatten()
 
 def load_all_layers(network_output, dirname):
 	layers = lasagne.layers.get_all_layers(network_output)
