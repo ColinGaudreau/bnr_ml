@@ -16,9 +16,6 @@ data/*
 # neural network weight folders
 **/.weights*/*
 
-# ignore notebooks
-**/notebooks/*
-
 # ignore iPython checkpoints
 *.ipynb_checkpoints
 
