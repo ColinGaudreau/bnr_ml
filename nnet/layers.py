@@ -117,7 +117,7 @@ class FCLayer(AbstractNNetLayer):
 		self.output = self.get_output()
 
 	def _initialize_params(self):
-		W = 0.01 * np.random.randn(
+		W = 0.1 * np.random.rand(
 			np.prod(self.input_shape[1:]),
 			self.num_units
 		).astype(theano.config.floatX)
