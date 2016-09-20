@@ -6,6 +6,7 @@ from bnr_ml.utils.helpers import meshgrid2D
 from collections import OrderedDict
 from tqdm import tqdm
 import time
+from lasagne import layers
 
 import pdb
 
@@ -37,7 +38,7 @@ class YoloObjectDetector(object):
 		self.input = network['input'].input
 		self.input_shape = input_shape
 
-		output = network['output'].output
+		output = layers.get_output(network['output'])
 		output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 		for i in range(num_classes):
 			output = T.set_subtensor(output[:,5*i:5*(i+1),:,:], T.nnet.sigmoid(output[:,5*i:5*(i+1),:,:]))
@@ -45,10 +46,11 @@ class YoloObjectDetector(object):
 		output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
 		self.output = output
 
-		self.params = []
-		for lname in network:
-			layer = network[lname]
-			self.params.extend(layer.get_params())
+		self.params = layers.get_all_params(network['output'])
+		# self.params = []
+		# for lname in network:
+		# 	layer = network[lname]
+		# 	self.params.extend(layer.get_params())
 
 	def _get_cost(self, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
