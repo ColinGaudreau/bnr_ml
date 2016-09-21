@@ -63,65 +63,51 @@ class YoloObjectDetector(object):
 		#	output = output.get_output()
 		dims, probs = target[:,:4], target[:,4:]
 
-		w1, w2 = np.ceil(float(self.input_shape[2]) / self.S[0]), np.ceil(float(self.input_shape[3]) / self.S[1])
+		def scale_dims(dims, i, j):
+			dims = T.set_subtensor(dims[:,0], dims[:,0] - float(i) / self.S[0])
+			dims = T.set_subtensor(dims[:,1], dims[:,1] - float(j) / self.S[1])
+			return dims
+		def unscale_dims(dims, i, j):
+			dims = T.set_subtensor(dims[:,0], dims[:,0] + float(i) / self.S[0])
+			dims = T.set_subtensor(dims[:,1], dims[:,1] + float(j) / self.S[1])
+			return dims
+		def iou_score(box1, box2, eps=1e-3):
+			xi = T.maximum(box1[:,0], box2[:,0])
+			yi = T.maximum(box1[:,1], box2[:,1])
+			xf = T.minimum(box1[:,0] + box1[:,2], box2[:,0] + box2[:,2])
+			yf = T.minimum(box1[:,1] + box1[:,3], box2[:,1] + box2[:,3])
 
-		def scale_dims(dims):
-			newdims = T.set_subtensor(dims[:,0], (dims[:,0] - i * w1) / self.input_shape[2])
-			newdims = T.set_subtensor(newdims[:,1], (newdims[:,1] - j * w2) / self.input_shape[3])
-			newdims = T.set_subtensor(newdims[:,2], (newdims[:,2] / self.input_shape[2]))
-			newdims = T.set_subtensor(newdims[:,3], (newdims[:,3] / self.input_shape[3]))
-			return newdims
-		def unscale_dims(dims):
-			newdims = T.set_subtensor(dims[:,0], dims[:,0] * self.input_shape[2] + i * w1)
-			newdims = T.set_subtensor(newdims[:,1], newdims[:,1] * self.input_shape[3] + j * w2)
-			newdims = T.set_subtensor(newdims[:,2], newdims[:,2] * self.input_shape[2])
-			newdims = T.set_subtensor(newdims[:,3], newdims[:,3] * self.input_shape[3])
-			return newdims
+			isec = T.maximum((xf - xi) * (yf - yi), 0.)
+			union = box1[:,2]*box1[:,3] + box2[:,2]*box2[:,3] - isec
+			return isec / (union + eps)
 
 		cost = T.as_tensor_variable(0.)
 		for i in range(self.S[0]):
 			for j in range(self.S[1]):
 				preds_ij = []
-				ious = []
+				box_ious = []
 
-				newdims = scale_dims(dims)
+				dims = scale_dims(dims)
 
 				for k in range(self.B):
 					pred_ijk = output[:,k*5:(k+1)*5,i,j] # single prediction for cell and box
 
-					# get intersecion box coordinates relative to boxes
-					isec_xi = T.maximum(newdims[:,0], pred_ijk[:,0])
-					isec_yi = T.maximum(newdims[:,1], pred_ijk[:,1])
-					isec_xf = T.minimum(newdims[:,0] + newdims[:,2], pred_ijk[:,0] + pred_ijk[:,2])
-					isec_yf = T.minimum(newdims[:,1] + newdims[:,3], pred_ijk[:,1] + pred_ijk[:,3])
+					# calc iou score
+					iou = iou_score(dims, pred_ijk)
 
-					isec = T.maximum((isec_xf - isec_xi) * (isec_yf - isec_yi), 0.)
-
-					union = newdims[:,2] * newdims[:,3] + pred_ijk[:,2] * pred_ijk[:,3] - isec
-
-					iou = isec / (union + T.as_tensor_variable(1e-2))
-
-					preds_ij.append(pred_ijk.dimshuffle(0,1,'x'))
-					ious.append(iou.dimshuffle(0,'x'))
+					# append to iou list (iou scores for each box B)
+					pred_ij.append(pred_ijk.dimshuffle(0,1,'x'))
+					box_ious.append(iou.dimshuffle(0,'x'))
 
 				# Determine if the image intersects with the cell
-				isec_xi = T.maximum(newdims[:,0], 0.)
-				isec_yi = T.maximum(newdims[:,1], 0.)
-				isec_xf = T.minimum(newdims[:,0] + newdims[:,2], 1. / self.S[0])
-				isec_yf = T.minimum(newdims[:,1] + newdims[:,3], 1. / self.S[1])
-
-				isec = T.maximum((isec_xf - isec_xi) * (isec_yf - isec_yi), 0.)
-
-				union = newdims[:,2] * newdims[:,3] + pred_ijk[:,2] * pred_ijk[:,3] - isec
-
-				iou = isec / (union + T.as_tensor_variable(1e-2))
+				iou = iou_score(dims, np.asarray([[0., 0., 1./self.S[0], 1./self.S[1]]]))
 
 				is_not_in_cell = (iou < iou_thresh).nonzero()
 
 				preds_ij = T.concatenate(preds_ij, axis=2)
-				ious = T.concatenate(ious, axis=1)
+				box_ious = T.concatenate(box_ious, axis=1)
 
-				iou_max = T.argmax(ious, axis=1)
+				iou_max = T.argmax(box_ious, axis=1)
 
 				# get final values for predictions
 				row,col = meshgrid2D(T.arange(preds_ij.shape[0]), T.arange(preds_ij.shape[1]))
@@ -131,24 +117,24 @@ class YoloObjectDetector(object):
 
 				# get final values for IoUs
 				row = T.arange(preds_ij.shape[0])
-				ious = ious[row, iou_max]
+				box_ious = box_ious[row, iou_max]
 
-				is_box_not_in_cell = (ious < iou_thresh).nonzero()
+				# is_not_responsible = (box_ious < iou_thresh).nonzero()
 
-				cost_ij_t1 = (preds_ij[:,0] - newdims[:,0])**2 + (preds_ij[:,1] - newdims[:,1])**2
-				cost_ij_t1 +=  (T.sqrt(preds_ij[:,2]) - T.sqrt(newdims[:,2]))**2 + (T.sqrt(preds_ij[:,3]) - T.sqrt(newdims[:,3]))**2
+				cost_ij_t1 = (preds_ij[:,0] - dims[:,0])**2 + (preds_ij[:,1] - dims[:,1])**2
+				cost_ij_t1 +=  (T.sqrt(preds_ij[:,2]) - T.sqrt(dims[:,2]))**2 + (T.sqrt(preds_ij[:,3]) - T.sqrt(dims[:,3]))**2
 				cost_ij_t1 *= lmbda_coord
 
-				cost_ij_t1 = lmbda_noobj * (preds_ij[:,4] - ious)**2
+				cost_ij_t1 += lmbda_noobj * (preds_ij[:,4] - ious)**2
 
 				cost_ij_t2 = lmbda_noobj * T.sum((probs - output[:,-self.num_classes:,i,j])**2, axis=1)
 
-				cost_ij_t1 = T.set_subtensor(cost_ij_t1[is_box_not_in_cell], 0.)
+				#cost_ij_t1 = T.set_subtensor(cost_ij_t1[is_box_not_in_cell], 0.)
 				cost_ij_t2 = T.set_subtensor(cost_ij_t2[is_not_in_cell], 0.)
 
 				cost += cost_ij_t1 + cost_ij_t2
 
-				dims = unscale_dims(newdims)
+				dims = unscale_dims(dims)
 
 		cost = cost.mean()
 
