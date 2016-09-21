@@ -85,7 +85,7 @@ class YoloObjectDetector(object):
 				newdims = scale_dims(dims)
 
 				for k in range(self.B):
-					pred_ijk = output[:,k*5:(k+1) * 5,i,j] # single prediction for cell and box
+					pred_ijk = output[:,k*5:(k+1)*5,i,j] # single prediction for cell and box
 
 					# get intersecion box coordinates relative to boxes
 					isec_xi = T.maximum(newdims[:,0], pred_ijk[:,0])
