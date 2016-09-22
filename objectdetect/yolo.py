@@ -87,7 +87,7 @@ class YoloObjectDetector(object):
 				preds_ij = []
 				box_ious = []
 
-				dims = scale_dims(dims)
+				dims = scale_dims(dims, i, j)
 
 				for k in range(self.B):
 					pred_ijk = output[:,k*5:(k+1)*5,i,j] # single prediction for cell and box
@@ -96,7 +96,7 @@ class YoloObjectDetector(object):
 					iou = iou_score(dims, pred_ijk)
 
 					# append to iou list (iou scores for each box B)
-					pred_ij.append(pred_ijk.dimshuffle(0,1,'x'))
+					preds_ij.append(pred_ijk.dimshuffle(0,1,'x'))
 					box_ious.append(iou.dimshuffle(0,'x'))
 
 				# Determine if the image intersects with the cell
@@ -124,8 +124,9 @@ class YoloObjectDetector(object):
 				cost_ij_t1 = (preds_ij[:,0] - dims[:,0])**2 + (preds_ij[:,1] - dims[:,1])**2
 				cost_ij_t1 +=  (T.sqrt(preds_ij[:,2]) - T.sqrt(dims[:,2]))**2 + (T.sqrt(preds_ij[:,3]) - T.sqrt(dims[:,3]))**2
 				cost_ij_t1 *= lmbda_coord
-
-				cost_ij_t1 += lmbda_noobj * (preds_ij[:,4] - ious)**2
+				
+				box_ious = T.set_subtensor(box_ious[is_not_in_cell], 0.)
+				cost_ij_t1 += lmbda_noobj * (preds_ij[:,4] - box_ious)**2
 
 				cost_ij_t2 = lmbda_noobj * T.sum((probs - output[:,-self.num_classes:,i,j])**2, axis=1)
 
@@ -134,7 +135,7 @@ class YoloObjectDetector(object):
 
 				cost += cost_ij_t1 + cost_ij_t2
 
-				dims = unscale_dims(dims)
+				dims = unscale_dims(dims, i, j)
 
 		cost = cost.mean()
 
@@ -149,13 +150,13 @@ class YoloObjectDetector(object):
 
 		return updates
 
-	def train(self, X, y, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, seed=1991):
+	def train(self, X, y, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, seed=1991):
 		np.random.seed(seed)
 
 		target = T.matrix('target')
 
 		print('Getting cost...'); time.sleep(0.1)
-		cost = self._get_cost(target)
+		cost = self._get_cost(target, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
 		updates = rmsprop(cost, self.params, learning_rate=lr)
@@ -186,7 +187,7 @@ class YoloObjectDetector(object):
 					err = train_fn(Xbatch, ybatch)
 					train_loss_batch.append(err)
 			train_loss[epoch] = np.mean(train_loss_batch)
-			test_loss[epoch] = test_fn(Xtrain, ytrain)
+			test_loss[epoch] = test_fn(Xtest, ytest)
 
 			print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)	
 
