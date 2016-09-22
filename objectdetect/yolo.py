@@ -40,13 +40,18 @@ class YoloObjectDetector(object):
 		self.input = network['input'].input_var
 		self.input_shape = input_shape
 
-		output = layers.get_output(network['output'])
-		output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
-		for i in range(num_classes):
-			output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
-			output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
-		output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
-		self.output = output
+		output = layers.get_output(network['output'], deterministic=False)
+		output_test = layers.get_output(network['output'], deterministic=True)
+
+		def get_output(output, B, S, num_classes):
+			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
+			for i in range(num_classes):
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
+			output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
+			return output
+		self.output = get_output(output, B, S, num_classes)
+		self.output_test = get_output(output_test, B, S, num_classes)
 
 		self.params = layers.get_all_params(network['output'])
 		# self.params = []
@@ -54,11 +59,11 @@ class YoloObjectDetector(object):
 		# 	layer = network[lname]
 		# 	self.params.extend(layer.get_params())
 
-	def _get_cost(self, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
+	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
 		lmbda_noobj = T.as_tensor_variable(lmbda_noobj)
 		iou_thresh = T.as_tensor_variable(iou_thresh)
-		output = self.output
+		# output = self.output
 		#if isinstance(output, AbstractNNetLayer):
 		#	output = output.get_output()
 		dims, probs = target[:,:4], target[:,4:]
@@ -162,14 +167,15 @@ class YoloObjectDetector(object):
 		target = T.matrix('target')
 
 		print('Getting cost...'); time.sleep(0.1)
-		cost = self._get_cost(target, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost = self._get_cost(self.output, target, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test = self._get_cost(self.output_test, target, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
 		updates = rmsprop(cost, self.params, learning_rate=lr)
 
 		print('Compiling...'); time.sleep(0.1)
 		train_fn = theano.function([self.input, target], cost, updates=updates)
-		test_fn = theano.function([self.input, target], cost)
+		test_fn = theano.function([self.input, target], cost_test)
 
 		Ntrain = np.int_(X.shape[0] * train_test_split)
 
