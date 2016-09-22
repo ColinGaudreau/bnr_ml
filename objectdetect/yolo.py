@@ -120,13 +120,19 @@ class YoloObjectDetector(object):
 				box_ious = box_ious[row, iou_max]
 
 				# is_not_responsible = (box_ious < iou_thresh).nonzero()
+				box_ious = T.set_subtensor(box_ious[is_not_in_cell], 0.)
 
 				cost_ij_t1 = (preds_ij[:,0] - dims[:,0])**2 + (preds_ij[:,1] - dims[:,1])**2
 				cost_ij_t1 +=  (T.sqrt(preds_ij[:,2]) - T.sqrt(dims[:,2]))**2 + (T.sqrt(preds_ij[:,3]) - T.sqrt(dims[:,3]))**2
+
+				conf_in_cell = T.set_subtensor(preds_ij[:,4][is_not_in_cell], 0.) # set values which don't intersect with cell to 0.
+
+				cost_ij_t1 += (conf_in_cell - box_ious)**2
+
 				cost_ij_t1 *= lmbda_coord
 				
-				box_ious = T.set_subtensor(box_ious[is_not_in_cell], 0.)
-				cost_ij_t1 += lmbda_noobj * (preds_ij[:,4] - box_ious)**2
+				conf_out_cell = T.set_subtensor(preds_ij[:,4][T.invert(is_not_in_cell)], 0.) # set values which do interset with cell to 0.
+				cost_ij_t1 += lmbda_noobj * (conf_out_cell - box_ious)**2
 
 				cost_ij_t2 = lmbda_noobj * T.sum((probs - output[:,-self.num_classes:,i,j])**2, axis=1)
 
