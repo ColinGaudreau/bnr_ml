@@ -60,77 +60,77 @@ class YoloObjectDetector(object):
 		# 	self.params.extend(layer.get_params())
 
 	def _get_cost_optim(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.1):
-	    # calculate height/width of individual cell
-	    block_height, block_width = 1. / S[0], 1./ S[1]
+		# calculate height/width of individual cell
+		block_height, block_width = 1. / S[0], 1./ S[1]
 
-	    # get the offset of each cell
-	    offset_x, offset_y = meshgrid2D(T.arange(0,1,block_height), T.arange(0,1,block_width))
-	    
-	    # get indices for x,y,w,h,object-ness for easy access
-	    x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B+ 1, 5)
-	    w_idx, h_idx = T.arange(2,5*B+2,5), T.arange(3,5*B+3,5)
-	    conf_idx = T.arange(4,5*B+4,5)
-	    
-	    # Get position predictions with offsets.
-	    pred = T.set_subtensor(output[:,x_idx,:,:],output[:,x_idx,:,:] + offset_x)
-	    pred = T.set_subtensor(output[:,y_idx,:,:],output[:,y_idx,:,:] + offset_y)
-	    
-	    # Get intersection region bounding box coordinates
-	    xi = T.maximum(pred[:,x_idx,:,:], truth[:,0].dimshuffle(0,'x','x','x'))
-	    xf = T.minimum(pred[:,x_idx,:,:] + pred[:,w_idx,:,:], (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x','x'))
-	    yi = T.maximum(pred[:,y_idx,:,:], truth[:,1].dimshuffle(0,'x','x','x'))
-	    yf = T.minimum(pred[:,y_idx,:,:] + pred[:,h_idx,:,:], (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x','x'))
-	    
-	    # Calculate iou score for predicted boxes and truth
-	    isec = (xf - xi) * (yf - yi)
-	    union = (pred[:,w_idx] * pred[:,h_idx]) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x','x') - isec
-	    iou = T.maximum(isec/union, 0.)
-	    
-	    # Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
-	    maxval_idx, a = meshgrid2D(T.arange(B), T.arange(pred.shape[0]))
-	    maxval_idx = maxval_idx.reshape((pred.shape[0],-1))
-	    maxval_idx = maxval_idx.dimshuffle(0,1,'x','x')
-	    maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],2),S[1],3)
-	    is_max = T.eq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
-	    
-	    # Get matrix for the width/height of each cell
-	    width, height = T.ones(S) / S[1], T.ones(S) / S[0]
-	    width, height = width.dimshuffle('x',0,1), height.dimshuffle('x',0,1)
-	    
-	    # Get bounding box for intersection between CELL and ground truth box.
-	    xi = T.maximum(offset_x, truth[:,0].dimshuffle(0,'x','x'))
-	    xf = T.minimum(offset_x + width, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x'))
-	    yi = T.maximum(offset_y, truth[:,1].dimshuffle(0,'x','x'))
-	    yf = T.minimum(offset_y + height, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x'))
-	 
-	    # Calculate iou score for the cell.
-	    isec = (xf - xi) * (yf - yi)
-	    union = width * height + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x') - isec
-	    iou_cell = T.maximum(isec/union, 0.)
-	    
-	    # Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
-	    is_inter = (iou_cell > iou_thresh).dimshuffle(0,'x',1,2)
-	    
-	    # Get logical matrix for cells and boxes which overlap and are responsible for prediction.
-	    isbox_andcell = T.bitwise_and(is_max, is_inter)
-	    
-	    # repeat "cell overlaps" logical matrix for the number of classes.
-	    is_inter = T.repeat(is_inter, C, axis=1)
-	    
-	    # repeat the ground truth for class probabilities for each cell.
-	    clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
-	    
-	    # calculate cost
-	    pdb.set_trace()
-	    cost = lmbda_coord * T.sum((pred[:,conf_idx,:,:])[isbox_andcell.nonzero()]**2) + \
-	    	lmbda_noobj * T.sum((pred[:,conf_idx,:,:][T.bitwise_not(isbox_andcell.nonzero())])**2) + \
-	    	T.sum((pred[:,x_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
-	        T.sum((pred[:,y_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
-	        T.sum((pred[:,w_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
-	        T.sum((pred[:,h_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
-	        T.sum((pred[:,-C:,:,:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
-	    
-	    return cost
+		# get the offset of each cell
+		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_height), T.arange(0,1,block_width))
+		
+		# get indices for x,y,w,h,object-ness for easy access
+		x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B, 5)
+		w_idx, h_idx = T.arange(2,5*B,5), T.arange(3,5*B,5)
+		conf_idx = T.arange(4,5*B+4,5)
+		
+		# Get position predictions with offsets.
+		pred_x = output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)
+		pred_y = output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)
+		pred_w, pred_h, pred_conf = output[:,w_idx], output[:,h_idx], output[:,conf_idx]
+		
+		# Get intersection region bounding box coordinates
+		xi = T.maximum(pred_x, truth[:,0].dimshuffle(0,'x','x','x'))
+		xf = T.minimum(pred_x + pred_w, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x','x'))
+		yi = T.maximum(pred_y, truth[:,1].dimshuffle(0,'x','x','x'))
+		yf = T.minimum(pred_y + pred_h, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x','x'))
+		
+		# Calculate iou score for predicted boxes and truth
+		isec = (xf - xi) * (yf - yi)
+		union = (pred_w * pred_h) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x','x') - isec
+		iou = T.maximum(isec/union, 0.)
+
+		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
+		maxval_idx, a = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
+		maxval_idx = maxval_idx.reshape((truth.shape[0],-1))
+		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x')
+		maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],2),S[1],3)
+		is_max = T.eq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
+		
+		# Get matrix for the width/height of each cell
+		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
+		width, height = width.dimshuffle('x',0,1), height.dimshuffle('x',0,1)
+		
+		# Get bounding box for intersection between CELL and ground truth box.
+		xi = T.maximum(offset_x, truth[:,0].dimshuffle(0,'x','x'))
+		xf = T.minimum(offset_x + width, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x'))
+		yi = T.maximum(offset_y, truth[:,1].dimshuffle(0,'x','x'))
+		yf = T.minimum(offset_y + height, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x'))
+
+		# Calculate iou score for the cell.
+		isec = (xf - xi) * (yf - yi)
+		union = width * height + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x') - isec
+		iou_cell = T.maximum(isec/union, 0.)
+		
+		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
+		is_inter = (iou_cell > iou_thresh).dimshuffle(0,'x',1,2)
+		
+		# Get logical matrix for cells and boxes which overlap and are responsible for prediction.
+		isbox_andcell = T.bitwise_and(is_max, is_inter)
+		
+		# repeat "cell overlaps" logical matrix for the number of classes.
+		is_inter = T.repeat(is_inter, C, axis=1)
+		
+		# repeat the ground truth for class probabilities for each cell.
+		clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
+		
+		# calculate cost
+		cost = lmbda_coord * T.sum((pred_conf - iou)[isbox_andcell.nonzero()]**2) + \
+			lmbda_noobj * T.sum((pred_conf[T.bitwise_not(isbox_andcell).nonzero()])**2) + \
+			T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
+			T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
+			T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
+			T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
+			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
+		
+		return cost
 
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
