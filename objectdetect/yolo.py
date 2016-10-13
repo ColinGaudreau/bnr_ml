@@ -121,9 +121,10 @@ class YoloObjectDetector(object):
 	    clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
 	    
 	    # calculate cost
-	    cost = lmbda_coord * T.sum((pred[:,conf_idx,:,:][isbox_andcell.nonzero()] - iou[isbox_andcell.nonzero()])**2) + \
-	        lmbda_noobj * T.sum((pred[:,conf_idx,:,:][T.bitwise_not(isbox_andcell.nonzero())])**2) + \
-	        T.sum((pred[:,x_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
+	    pdb.set_trace()
+	    cost = lmbda_coord * T.sum((pred[:,conf_idx,:,:])[isbox_andcell.nonzero()]**2) + \
+	    	lmbda_noobj * T.sum((pred[:,conf_idx,:,:][T.bitwise_not(isbox_andcell.nonzero())])**2) + \
+	    	T.sum((pred[:,x_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
 	        T.sum((pred[:,y_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
 	        T.sum((pred[:,w_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
 	        T.sum((pred[:,h_idx,:,:][is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
@@ -241,8 +242,8 @@ class YoloObjectDetector(object):
 
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
-		cost = self._get_cost_optim(self.output, target, self.S, self.B, self.C, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test = self._get_cost_optim(self.output_test, target, self.S, self.B, self.C, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost = self._get_cost_optim(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test = self._get_cost_optim(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
 
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
