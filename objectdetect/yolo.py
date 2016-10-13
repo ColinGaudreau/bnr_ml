@@ -204,12 +204,12 @@ class YoloObjectDetector(object):
 
 				conf_in_cell = T.set_subtensor(preds_ij[:,4][is_not_in_cell], 0.) # set values which don't intersect with cell to 0.
 
-				cost_ij_t1 += (conf_in_cell - box_ious)**2
+				cost_ij_t1 += 0*(conf_in_cell - box_ious)**2
 
 				cost_ij_t1 *= lmbda_coord
 				
 				conf_out_cell = T.set_subtensor(preds_ij[:,4][T.invert(is_not_in_cell)], 0.) # set values which do interset with cell to 0.
-				cost_ij_t1 += lmbda_noobj * (conf_out_cell - box_ious)**2
+				cost_ij_t1 += 0 * lmbda_noobj * (conf_out_cell - 0.)**2 # set non-intersecting cell confidences to 0.
 
 				cost_ij_t2 = lmbda_noobj * T.sum((probs - output[:,-self.num_classes:,i,j])**2, axis=1)
 
@@ -233,10 +233,11 @@ class YoloObjectDetector(object):
 
 		return updates
 
-	def train(self, X, y, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, seed=1991):
+	def train(self, X, y, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991):
 		np.random.seed(seed)
-
-		target = T.matrix('target')
+		
+		if target is None:
+			target = T.matrix('target')
 
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
