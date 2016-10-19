@@ -9,7 +9,7 @@ from tqdm import tqdm
 import time
 from lasagne import layers
 from lasagne.updates import rmsprop
-
+from itertools import tee
 import pdb
 
 class YoloObjectDetectorError(Exception):
@@ -45,8 +45,8 @@ class YoloObjectDetector(object):
 
 		def get_output(output, B, S, num_classes):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
-			for i in range(num_classes):
-				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
+			for i in range(B):
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.relu(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
 			return output
@@ -267,12 +267,15 @@ class YoloObjectDetector(object):
 
 		try:
 			for epoch in tqdm(range(epochs)):
-				idx = np.arange(Xtrain.shape[0])
-				np.random.shuffle(idx)
-				Xtrain, ytrain = Xtrain[idx], ytrain[idx]
+				#idx = np.arange(Xtrain.shape[0])
+				#np.random.shuffle(idx)
+				#Xtrain, ytrain = Xtrain[idx], ytrain[idx]
 
 				train_loss_batch = []
 				test_loss_batch = []
+
+				train_gen, train_gen_backup = tee(train_gen)
+				test_gen, test_gen_backup = tee(test_gen)
 
 				for Xbatch, ybatch in train_gen:
 					train_loss_batch.append(train_fn(Xbatch, ybatch))
@@ -282,6 +285,9 @@ class YoloObjectDetector(object):
 
 				train_loss[epoch] = np.mean(train_loss_batch)
 				test_loss[epoch] = np.mean(test_loss_batch)
+
+				train_gen = train_gen_backup
+				test_gen = test_gen_backup
 
 				print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)
 		except KeyboardInterrupt:
