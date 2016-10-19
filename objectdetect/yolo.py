@@ -234,7 +234,7 @@ class YoloObjectDetector(object):
 
 		return updates
 
-	def train(self, X, y, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991):
+	def train(self, train_gen, test_gen, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991):
 		np.random.seed(seed)
 		
 		if target is None:
@@ -255,31 +255,37 @@ class YoloObjectDetector(object):
 		test_fn = theano.function([self.input, target], cost_test)
 		print("Compiling functions took %.4f seconds" % (time.time() - ti,))
 
-		Ntrain = np.int_(X.shape[0] * train_test_split)
+		# Ntrain = np.int_(X.shape[0] * train_test_split)
 
-		Xtrain, ytrain = X[:Ntrain], y[:Ntrain]
-		Xtest, ytest = X[Ntrain:], y[Ntrain:]
+		# Xtrain, ytrain = X[:Ntrain], y[:Ntrain]
+		# Xtest, ytest = X[Ntrain:], y[Ntrain:]
 
 		train_loss = np.zeros((epochs,))
 		test_loss = np.zeros((epochs,))
 
 		print('Beginning training...'); time.sleep(0.1)
-		for epoch in tqdm(range(epochs)):
-			idx = np.arange(Xtrain.shape[0])
-			np.random.shuffle(idx)
-			Xtrain, ytrain = Xtrain[idx], ytrain[idx]
 
-			train_loss_batch = []
+		try:
+			for epoch in tqdm(range(epochs)):
+				idx = np.arange(Xtrain.shape[0])
+				np.random.shuffle(idx)
+				Xtrain, ytrain = Xtrain[idx], ytrain[idx]
 
-			for i in range(0, Xtrain.shape[0], batch_size):
-				Xbatch, ybatch = Xtrain[i:i + batch_size], ytrain[i:i + batch_size]
-				if Xbatch.shape[0] > 0:
-					err = train_fn(Xbatch, ybatch)
-					train_loss_batch.append(err)
-			train_loss[epoch] = np.mean(train_loss_batch)
-			test_loss[epoch] = test_fn(Xtest, ytest)
+				train_loss_batch = []
+				test_loss_batch = []
 
-			print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)	
+				for Xbatch, ybatch in train_gen:
+					train_loss_batch.append(train_fn(Xbatch, ybatch))
+
+				for Xbatch, ybatch in test_gen:
+					test_loss_batch.append(test_fn(Xbatch, ybatch))
+
+				train_loss[epoch] = np.mean(train_loss_batch)
+				test_loss[epoch] = np.mean(test_loss_batch)
+
+				print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)
+		except KeyboardInterrupt:
+			pass
 
 		return train_loss, test_loss
 
