@@ -76,17 +76,20 @@ class YoloObjectDetector(object):
 		pred_y = output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)
 		pred_w, pred_h, pred_conf = output[:,w_idx], output[:,h_idx], output[:,conf_idx]
 		pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
+
+		truth_x, truth_y, truth_w, truth_h = truth[:,0], truth[:,1], truth[:,2], truth[:,3]
+		truth_w, truth_h = T.maximum(truth_w, 0.), T.maximum(truth_h, 0.)
 		
 		# Get intersection region bounding box coordinates
-		xi = T.maximum(pred_x, truth[:,0].dimshuffle(0,'x','x','x'))
-		xf = T.minimum(pred_x + pred_w, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x','x'))
-		yi = T.maximum(pred_y, truth[:,1].dimshuffle(0,'x','x','x'))
-		yf = T.minimum(pred_y + pred_h, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x','x'))
+		xi = T.maximum(pred_x, truth_x.dimshuffle(0,'x','x','x'))
+		xf = T.minimum(pred_x + pred_w, (truth_x + truth_w).dimshuffle(0,'x','x','x'))
+		yi = T.maximum(pred_y, truth_y.dimshuffle(0,'x','x','x'))
+		yf = T.minimum(pred_y + pred_h, (truth_y + truth_h).dimshuffle(0,'x','x','x'))
 		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
 
 		# Calculate iou score for predicted boxes and truth
 		isec = w * h
-		union = (pred_w * pred_h) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x','x') - isec
+		union = (pred_w * pred_h) + (truth_w * truth_h).dimshuffle(0,'x','x','x') - isec
 		iou = T.maximum(isec/union, 0.)
 
 		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
@@ -103,15 +106,15 @@ class YoloObjectDetector(object):
 		offset_x, offset_y = offset_x.dimshuffle('x',0,1), offset_y.dimshuffle('x',0,1)
 		
 		# Get bounding box for intersection between CELL and ground truth box.
-		xi = T.maximum(offset_x, truth[:,0].dimshuffle(0,'x','x'))
-		xf = T.minimum(offset_x + width, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x'))
-		yi = T.maximum(offset_y, truth[:,1].dimshuffle(0,'x','x'))
-		yf = T.minimum(offset_y + height, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x'))
+		xi = T.maximum(offset_x, truth_x.dimshuffle(0,'x','x'))
+		xf = T.minimum(offset_x + width, (truth_x + truth_w).dimshuffle(0,'x','x'))
+		yi = T.maximum(offset_y, truth_y.dimshuffle(0,'x','x'))
+		yf = T.minimum(offset_y + height, (truth_y + truth_h).dimshuffle(0,'x','x'))
 		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
 
 		# Calculate iou score for the cell.
 		isec = (xf - xi) * (yf - yi)
-		union = (width * height) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x') - isec
+		union = (width * height) + (truth_w* truth_h).dimshuffle(0,'x','x') - isec
 		iou_cell = T.maximum(isec/union, 0.)
 		
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
@@ -126,10 +129,10 @@ class YoloObjectDetector(object):
 		# calculate cost
 		cost = T.sum((pred_conf - iou)[is_max.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[is_not_max.nonzero()])**2) + \
-			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
-			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
-			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
-			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
+			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth_x.dimshuffle(0,'x'))**2) + \
+			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth_y.dimshuffle(0,'x'))**2) + \
+			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_w.dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_h.dimshuffle(0,'x').sqrt())**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost
