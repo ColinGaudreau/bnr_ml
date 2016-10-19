@@ -75,6 +75,7 @@ class YoloObjectDetector(object):
 		pred_x = output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)
 		pred_y = output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)
 		pred_w, pred_h, pred_conf = output[:,w_idx], output[:,h_idx], output[:,conf_idx]
+		pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
 		
 		# Get intersection region bounding box coordinates
 		xi = T.maximum(pred_x, truth[:,0].dimshuffle(0,'x','x','x'))
