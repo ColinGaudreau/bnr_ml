@@ -20,15 +20,6 @@ def save_all_layers(network_output, dirname):
 			wcnt += 1
 		lcnt += 1
 
-# Previous version of meshgrid2D:
-#
-# def meshgrid2D(arr1, arr2):
-#     a,_ = theano.scan(
-#         lambda x: [T.extra_ops.repeat(arr1[x], arr2.shape[0]), arr2],
-#         sequences=T.arange(arr1.shape[0])
-#     )
-#     return a[0].flatten(), a[1].flatten()
-
 def meshgrid2D(arr1, arr2):
     arr1 = arr1.dimshuffle('x',0)
     arr2 = arr2.dimshuffle(0,'x')

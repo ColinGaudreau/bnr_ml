@@ -59,17 +59,17 @@ class YoloObjectDetector(object):
 		# 	layer = network[lname]
 		# 	self.params.extend(layer.get_params())
 
-	def _get_cost_optim(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.1):
+	def _get_cost_optim(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
 		# calculate height/width of individual cell
 		block_height, block_width = 1. / S[0], 1./ S[1]
 
 		# get the offset of each cell
-		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_height), T.arange(0,1,block_width))
-		
+		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_width), T.arange(0,1,block_height))
+
 		# get indices for x,y,w,h,object-ness for easy access
 		x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B, 5)
 		w_idx, h_idx = T.arange(2,5*B,5), T.arange(3,5*B,5)
-		conf_idx = T.arange(4,5*B+4,5)
+		conf_idx = T.arange(4,5*B,5)
 		
 		# Get position predictions with offsets.
 		pred_x = output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)
@@ -81,39 +81,40 @@ class YoloObjectDetector(object):
 		xf = T.minimum(pred_x + pred_w, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x','x'))
 		yi = T.maximum(pred_y, truth[:,1].dimshuffle(0,'x','x','x'))
 		yf = T.minimum(pred_y + pred_h, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x','x'))
-		
+		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
+
 		# Calculate iou score for predicted boxes and truth
-		isec = (xf - xi) * (yf - yi)
+		isec = w * h
 		union = (pred_w * pred_h) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x','x') - isec
 		iou = T.maximum(isec/union, 0.)
 
 		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
-		maxval_idx, a = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
-		maxval_idx = maxval_idx.reshape((truth.shape[0],-1))
+		maxval_idx, _ = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
 		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x')
 		maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],2),S[1],3)
+		
 		is_max = T.eq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
+		is_not_max = T.neq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
 		
 		# Get matrix for the width/height of each cell
 		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
 		width, height = width.dimshuffle('x',0,1), height.dimshuffle('x',0,1)
+		offset_x, offset_y = offset_x.dimshuffle('x',0,1), offset_y.dimshuffle('x',0,1)
 		
 		# Get bounding box for intersection between CELL and ground truth box.
 		xi = T.maximum(offset_x, truth[:,0].dimshuffle(0,'x','x'))
 		xf = T.minimum(offset_x + width, (truth[:,0] + truth[:,2]).dimshuffle(0,'x','x'))
 		yi = T.maximum(offset_y, truth[:,1].dimshuffle(0,'x','x'))
 		yf = T.minimum(offset_y + height, (truth[:,1] + truth[:,3]).dimshuffle(0,'x','x'))
+		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
 
 		# Calculate iou score for the cell.
 		isec = (xf - xi) * (yf - yi)
-		union = width * height + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x') - isec
+		union = (width * height) + (truth[:,2] * truth[:,3]).dimshuffle(0,'x','x') - isec
 		iou_cell = T.maximum(isec/union, 0.)
 		
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
 		is_inter = (iou_cell > iou_thresh).dimshuffle(0,'x',1,2)
-		
-		# Get logical matrix for cells and boxes which overlap and are responsible for prediction.
-		isbox_andcell = T.bitwise_and(is_max, is_inter)
 		
 		# repeat "cell overlaps" logical matrix for the number of classes.
 		is_inter = T.repeat(is_inter, C, axis=1)
@@ -122,12 +123,12 @@ class YoloObjectDetector(object):
 		clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
 		
 		# calculate cost
-		cost = lmbda_coord * T.sum((pred_conf - iou)[isbox_andcell.nonzero()]**2) + \
-			lmbda_noobj * T.sum((pred_conf[T.bitwise_not(isbox_andcell).nonzero()])**2) + \
-			T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
-			T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
-			T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
-			T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
+		cost = T.sum((pred_conf - iou)[is_max.nonzero()]**2) + \
+			lmbda_noobj * T.sum((pred_conf[is_not_max.nonzero()])**2) + \
+			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[0]])**2) + \
+			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,[1]])**2) + \
+			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[2]].sqrt())**2) + \
+			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,[3]].sqrt())**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost
