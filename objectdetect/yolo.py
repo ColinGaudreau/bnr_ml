@@ -3,7 +3,7 @@ from theano import tensor as T
 import numpy as np
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid2D, softmax
+from bnr_ml.utils.helpers import meshgrid2D, softmax, bitwise_not
 from collections import OrderedDict
 from tqdm import tqdm
 import time
@@ -116,6 +116,8 @@ class YoloObjectDetector(object):
 		
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
 		is_inter = (iou_cell > iou_thresh).dimshuffle(0,'x',1,2)
+
+		obj_in_cell_and_resp = T.bitwise_and(is_inter, is_max)
 		
 		# repeat "cell overlaps" logical matrix for the number of classes.
 		is_inter = T.repeat(is_inter, C, axis=1)
@@ -124,8 +126,8 @@ class YoloObjectDetector(object):
 		clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
 		
 		# calculate cost
-		cost = T.sum((pred_conf - iou)[is_max.nonzero()]**2) + \
-			lmbda_noobj * T.sum((pred_conf[is_not_max.nonzero()])**2) + \
+		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_noobj * T.sum((pred_conf[bitwise_not(obj_in_cell_and_resp).nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,0].dimshuffle(0,'x'))**2) + \
 			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,1].dimshuffle(0,'x'))**2) + \
 			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_w.dimshuffle(0,'x').sqrt())**2) + \
