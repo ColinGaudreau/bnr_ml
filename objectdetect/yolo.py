@@ -48,7 +48,7 @@ class YoloObjectDetector(object):
 			for i in range(B):
 				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.relu(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
-			output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
+			#output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
 			return output
 		self.output = get_output(output, B, S, num_classes)
 		self.output_test = get_output(output_test, B, S, num_classes)
