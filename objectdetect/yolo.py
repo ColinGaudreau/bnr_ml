@@ -128,10 +128,10 @@ class YoloObjectDetector(object):
 		# calculate cost
 		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[bitwise_not(obj_in_cell_and_resp).nonzero()])**2) + \
-			lmbda_coord * T.sum((pred_x[obj_in_cell_and_resp.nonzero()].reshape((truth.shape[0],-1)) - truth[:,0].dimshuffle(0,'x'))**2) + \
-			lmbda_coord * T.sum((pred_y[obj_in_cell_and_resp.nonzero()].reshape((truth.shape[0],-1)) - truth[:,1].dimshuffle(0,'x'))**2) + \
-			lmbda_coord * T.sum((pred_w[obj_in_cell_and_resp.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_w.dimshuffle(0,'x').sqrt())**2) + \
-			lmbda_coord * T.sum((pred_h[obj_in_cell_and_resp.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_h.dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_x - truth[:,0].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_y - truth[:,1].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost / T.maximum(1., truth.shape[0])
