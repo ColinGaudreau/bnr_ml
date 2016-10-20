@@ -3,7 +3,7 @@ from theano import tensor as T
 import numpy as np
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid2D
+from bnr_ml.utils.helpers import meshgrid2D, softmax
 from collections import OrderedDict
 from tqdm import tqdm
 import time
@@ -48,16 +48,12 @@ class YoloObjectDetector(object):
 			for i in range(B):
 				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.relu(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
-			output = T.set_subtensor(output[:,-self.num_classes:,:,:], T.exp(output[:,-self.num_classes:,:,:]) / T.sum(T.exp(output[:,-self.num_classes:,:,:]), axis=1, keepdims=True))
+			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
 			return output
 		self.output = get_output(output, B, S, num_classes)
 		self.output_test = get_output(output_test, B, S, num_classes)
 
 		self.params = layers.get_all_params(network['output'])
-		# self.params = []
-		# for lname in network:
-		# 	layer = network[lname]
-		# 	self.params.extend(layer.get_params())
 
 	def _get_cost_optim(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
 		# calculate height/width of individual cell
@@ -129,10 +125,10 @@ class YoloObjectDetector(object):
 		# calculate cost
 		cost = T.sum((pred_conf - iou)[is_max.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[is_not_max.nonzero()])**2) + \
-			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth_x.dimshuffle(0,'x'))**2) + \
-			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth_y.dimshuffle(0,'x'))**2) + \
-			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_w.dimshuffle(0,'x').sqrt())**2) + \
-			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_h.dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,0].dimshuffle(0,'x'))**2) + \
+			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,1].dimshuffle(0,'x'))**2) + \
+			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,2].dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,3].dimshuffle(0,'x').sqrt())**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost
