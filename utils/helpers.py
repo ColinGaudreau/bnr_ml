@@ -21,13 +21,13 @@ def save_all_layers(network_output, dirname):
 		lcnt += 1
 
 def meshgrid2D(arr1, arr2):
-    arr1 = arr1.dimshuffle('x',0)
-    arr2 = arr2.dimshuffle(0,'x')
-    arr1, arr2 = T.repeat(arr1, arr2.shape[0], axis=0), T.repeat(arr2, arr1.shape[1], axis=1)
-    return arr1, arr2
+	arr1 = arr1.dimshuffle('x',0)
+	arr2 = arr2.dimshuffle(0,'x')
+	arr1, arr2 = T.repeat(arr1, arr2.shape[0], axis=0), T.repeat(arr2, arr1.shape[1], axis=1)
+	return arr1, arr2
 
 def softmax(mat, axis=1):
-	'''
+	'''	
 	axis along which to take soft max, axis \in {0,1,2,3}
 
 	Safe softmax function:
@@ -50,6 +50,13 @@ def load_all_layers(network_output, dirname):
 			wcnt += 1
 		lasagne.layers.set_all_param_values(layer,weights)
 		lcnt += 1
+
+def bitwise_not(mat):
+	idx_true = T.eq(mat, 1)
+	idx_false = T.eq(mat, 0)
+	mat = T.set_subtensor(mat[idx_true.nonzero()], 0)
+	mat = T.set_subtensor(mat[idx_false.nonzero()], 1)
+	return mat
 
 def load_bee_images_from_list(image_list,size=(200,200),color=True):
 	channels = 3 if color else 1
@@ -103,11 +110,11 @@ def load_bee_images(imlist, size=(200,200), color=True, angle_list=None):
 	return X
 
 def scale_to_unit_interval(ndar, eps=1e-8):
-    """ Scales all values in the ndarray ndar to be between 0 and 1 """
-    ndar = ndar.copy()
-    ndar -= ndar.min()
-    ndar *= 1.0 / (ndar.max() + eps)
-    return ndar
+	""" Scales all values in the ndarray ndar to be between 0 and 1 """
+	ndar = ndar.copy()
+	ndar -= ndar.min()
+	ndar *= 1.0 / (ndar.max() + eps)
+	return ndar
 
 def tile_raster_images(X, img_shape, tile_shape, tile_spacing=(0, 0),
 					   scale_rows_to_unit_interval=True,
