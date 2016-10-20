@@ -46,7 +46,8 @@ class YoloObjectDetector(object):
 		def get_output(output, B, S, num_classes):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
-				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.relu(output[:,5*i + 2:5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
 			return output
@@ -127,8 +128,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[is_not_max.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,0].dimshuffle(0,'x'))**2) + \
 			lmbda_coord * T.sum((pred_y[is_max.nonzero()].reshape((truth.shape[0],-1)) - truth[:,1].dimshuffle(0,'x'))**2) + \
-			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,2].dimshuffle(0,'x').sqrt())**2) + \
-			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth[:,3].dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_w[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_w.dimshuffle(0,'x').sqrt())**2) + \
+			lmbda_coord * T.sum((pred_h[is_max.nonzero()].reshape((truth.shape[0],-1)).sqrt() - truth_h.dimshuffle(0,'x').sqrt())**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost
@@ -235,25 +236,33 @@ class YoloObjectDetector(object):
 
 		return updates
 
-	def train(self, train_gen, test_gen, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991):
+	def train(self, train_gen, test_gen, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991, logfile='/dev/stdout'):
 		np.random.seed(seed)
 		
+		logfile = open(logfile, 'w')
+
 		if target is None:
 			target = T.matrix('target')
-
+		
+		logfile.write('Getting cost...\n')
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
 		cost = self._get_cost_optim(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		cost_test = self._get_cost_optim(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		
+		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
 
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
 		updates = rmsprop(cost, self.params, learning_rate=lr)
 
+		logfile.write('Compiling...\n')
 		print('Compiling...'); time.sleep(0.1)
 		ti = time.time()
 		train_fn = theano.function([self.input, target], cost, updates=updates)
 		test_fn = theano.function([self.input, target], cost_test)
+		
+		logfile.write('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 		print("Compiling functions took %.4f seconds" % (time.time() - ti,))
 
 		# Ntrain = np.int_(X.shape[0] * train_test_split)
@@ -264,6 +273,7 @@ class YoloObjectDetector(object):
 		train_loss = np.zeros((epochs,))
 		test_loss = np.zeros((epochs,))
 
+		logfile.write('Beginning training...\n')
 		print('Beginning training...'); time.sleep(0.1)
 
 		try:
@@ -279,7 +289,10 @@ class YoloObjectDetector(object):
 				test_gen, test_gen_backup = tee(test_gen)
 
 				for Xbatch, ybatch in train_gen:
-					train_loss_batch.append(train_fn(Xbatch, ybatch))
+					err = train_fn(Xbatch, ybatch)
+					logfile.write('Batch error: %.4f\n' % err)
+					print(err)
+					train_loss_batch.append(err)
 
 				for Xbatch, ybatch in test_gen:
 					test_loss_batch.append(test_fn(Xbatch, ybatch))
@@ -289,11 +302,13 @@ class YoloObjectDetector(object):
 
 				train_gen = train_gen_backup
 				test_gen = test_gen_backup
-
+				
+				logfile.write('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (epoch, train_loss[epoch], test_loss[epoch]))
 				print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)
 		except KeyboardInterrupt:
-			pass
-
+			logfile.close()
+		
+		logfile.close()
 		return train_loss, test_loss
 
 

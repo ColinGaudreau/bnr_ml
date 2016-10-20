@@ -26,28 +26,15 @@ def meshgrid2D(arr1, arr2):
     arr1, arr2 = T.repeat(arr1, arr2.shape[0], axis=0), T.repeat(arr2, arr1.shape[1], axis=1)
     return arr1, arr2
 
-def softmax(mat, axis):
+def softmax(mat, axis=1):
 	'''
 	axis along which to take soft max, axis \in {0,1,2,3}
 
 	Safe softmax function:
 	log f(x) = x - (x_1 + log(1 + sum_{i=2}^N exp(x_i - x_1)))
 	'''
-	if axis = 0:
-		first_el = mat[[0]]
-		rest_el = mat[1:]
-	elif axis = 1:
-		first_el = mat[:,[0]]
-		rest_el = mat[:,1:]
-	elif axis = 2:
-		first_el = mat[:,:,[0]]
-		rest_el = mat[:,:,1:]
-	elif axis = 3:
-		first_el = mat[:,:,:,[0]]
-		rest_el = mat[:,:,:,1:]
-	else:
-		return None
-	logsoftmax = mat - (first_el + T.log(1. + T.sum(T.exp(rest_el - first_el), axis=axis, keepdims=True)))
+	max_el = mat.max(axis=axis, keepdims=True)
+	logsoftmax = mat - (max_el + T.log(T.sum(T.exp(mat - max_el), axis=axis, keepdims=True)))
 	return T.exp(logsoftmax)
 
 def load_all_layers(network_output, dirname):
