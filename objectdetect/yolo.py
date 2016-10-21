@@ -222,7 +222,11 @@ class YoloObjectDetector(object):
 		cell_intersects = (iou_cell > iou_thresh)
 			
 		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(cell_intersects, box_is_resp), obj_for_cell)
-		not_cell = T.eq(T.sum(obj_in_cell_and_resp, axis=1, keepdims=True), 0)
+		conf_is_zero = T.bitwise_and(
+			bitwise_not(T.bitwise_and(cell_intersects, box_is_resp)),
+			obj_for_cell
+		)
+		conf_is_zero = conf_is_zero.sum(axis=1, keepdims=True)
 		
 		# repeat "cell overlaps" logical matrix for the number of classes.
 		pred_class = T.repeat(pred_class, truth.shape[1] // (4 + C), axis=1)
@@ -232,7 +236,7 @@ class YoloObjectDetector(object):
 
 		# calculate cost
 		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_noobj * T.sum((pred_conf[not_cell.nonzero()])**2) + \
+			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
