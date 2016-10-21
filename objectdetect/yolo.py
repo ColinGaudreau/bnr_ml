@@ -136,6 +136,111 @@ class YoloObjectDetector(object):
 		
 		return cost / T.maximum(1., truth.shape[0])
 
+	def _get_cost_optim_multi(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
+		'''
+		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
+		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
+		and the object is higher than any other ground truth object. and the rest of the objectness scores are pushed
+		towards zero.
+		'''
+		
+		# calculate height/width of individual cell
+		block_height, block_width = 1. / S[0], 1./ S[1]
+
+		# get the offset of each cell
+		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_width), T.arange(0,1,block_height))
+
+		# get indices for x,y,w,h,object-ness for easy access
+		x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B, 5)
+		w_idx, h_idx = T.arange(2,5*B,5), T.arange(3,5*B,5)
+		conf_idx = T.arange(4,5*B,5)
+
+		# Get position predictions with offsets.
+		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
+		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
+		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3), output[:,h_idx].dimshuffle(0,'x',1,2,3)
+		pred_conf = output[:,conf_idx].dimshuffle(0,'x',1,2,3)
+		pred_class = output[:,-C:].dimshuffle(0,'x',1,2,3)
+		
+		pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
+
+		x_idx, y_idx = T.arange(0,truth.shape[1],4+C), T.arange(1,truth.shape[1],4+C)
+		w_idx, h_idx = T.arange(2,truth.shape[1],4+C), T.arange(3,truth.shape[1],4+C)
+		class_idx,_ = theano.scan(
+			lambda x: T.arange(x,x+C,1),
+			sequences = T.arange(4,truth.shape[1],4+C)
+		)
+
+		truth_x, truth_y = truth[:,x_idx], truth[:,y_idx]
+		truth_w, truth_h = truth[:,w_idx], truth[:,h_idx]
+		truth_class = truth[:, class_idx]
+		
+
+		# Get intersection region bounding box coordinates
+		xi = T.maximum(pred_x, truth_x.dimshuffle(0,1,'x','x','x'))
+		xf = T.minimum(pred_x + pred_w, (truth_x + truth_w).dimshuffle(0,1,'x','x','x'))
+		yi = T.maximum(pred_y, truth_y.dimshuffle(0,1,'x','x','x'))
+		yf = T.minimum(pred_y + pred_h, (truth_y + truth_h).dimshuffle(0,1,'x','x','x'))
+		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
+
+		# Calculate iou score for predicted boxes and truth
+		isec = w * h
+		union = (pred_w * pred_h) + (truth_w * truth_h).dimshuffle(0,1,'x','x','x') - isec
+		iou = T.maximum(isec/union, 0.)
+
+		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
+		maxval_idx, _ = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
+		maxval_idx = maxval_idx.dimshuffle(0,'x',1,'x','x')
+		maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],3),S[1],4)
+
+		box_is_resp = T.eq(maxval_idx, iou.argmax(axis=2).dimshuffle(0,1,'x',2,3))
+
+		# Get matrix for the width/height of each cell
+		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
+		width, height = width.dimshuffle('x','x',0,1), height.dimshuffle('x','x',0,1)
+		offset_x, offset_y = offset_x.dimshuffle('x','x',0,1), offset_y.dimshuffle('x','x',0,1)
+
+		# Get bounding box for intersection between CELL and ground truth box.
+		xi = T.maximum(offset_x, truth_x.dimshuffle(0,1,'x','x'))
+		xf = T.minimum(offset_x + width, (truth_x + truth_w).dimshuffle(0,1,'x','x'))
+		yi = T.maximum(offset_y, truth_y.dimshuffle(0,1,'x','x'))
+		yf = T.minimum(offset_y + height, (truth_y + truth_h).dimshuffle(0,1,'x','x'))
+		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
+
+		# Calculate iou score for the cell.
+		isec = w * h
+		union = (width * height) + (truth_w* truth_h).dimshuffle(0,1,'x','x') - isec
+		iou_cell = T.maximum(isec/union, 0.).dimshuffle(0,1,'x',2,3)
+		
+		maxval_idx, _ = meshgrid2D(T.arange(iou_cell.shape[1]), T.arange(iou_cell.shape[0]))
+		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x','x')
+		maxval_idx = T.repeat(T.repeat(T.repeat(maxval_idx, B, 2), S[0], 3), S[1], 4)
+		
+		obj_for_cell = T.eq(maxval_idx, iou_cell.argmax(axis=1).dimshuffle(0,'x',1,2,3))
+			
+		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
+		cell_intersects = (iou_cell > iou_thresh)
+			
+		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(cell_intersects, box_is_resp), obj_for_cell)
+		not_cell = T.eq(T.sum(obj_in_cell_and_resp, axis=1, keepdims=True), 0)
+		
+		# repeat "cell overlaps" logical matrix for the number of classes.
+		pred_class = T.repeat(pred_class, truth.shape[1] // (4 + C), axis=1)
+
+		# repeat the ground truth for class probabilities for each cell.
+		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
+
+		# calculate cost
+		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_noobj * T.sum((pred_conf[not_cell.nonzero()])**2) + \
+			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
+		
+		return cost / T.maximum(1., truth.shape[0])
+
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
 		lmbda_noobj = T.as_tensor_variable(lmbda_noobj)
