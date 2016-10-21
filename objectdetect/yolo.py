@@ -354,8 +354,8 @@ class YoloObjectDetector(object):
 		logfile.write('Getting cost...\n')
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
-		cost = self._get_cost_optim(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test = self._get_cost_optim(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost = self._get_cost_optim_multi(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test = self._get_cost_optim_multi(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		
 		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
