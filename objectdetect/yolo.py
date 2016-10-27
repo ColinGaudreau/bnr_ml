@@ -46,7 +46,7 @@ class YoloObjectDetector(object):
 		def get_output(output, B, S, num_classes):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
-				output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
+				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
 				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
@@ -136,7 +136,7 @@ class YoloObjectDetector(object):
 		
 		return cost / T.maximum(1., truth.shape[0])
 
-	def _get_cost_optim_multi(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
+	def _get_cost_optim_multi(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=3., iou_thresh=1e-3):
 		'''
 		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
@@ -210,7 +210,7 @@ class YoloObjectDetector(object):
 		# Calculate iou score for the cell.
 		isec = w * h
 		union = (width * height) + (truth_w* truth_h).dimshuffle(0,1,'x','x') - isec
-		iou_cell = T.maximum(isec/union, 0.).dimshuffle(0,1,'x',2,3)
+		iou_cell = T.maximum(isec/union, 0.).dimshuffle(0,1,'x',2,3) # * (np.prod(S)) # normalize the iou to make more sense
 		
 		maxval_idx, _ = meshgrid2D(T.arange(iou_cell.shape[1]), T.arange(iou_cell.shape[0]))
 		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x','x')
@@ -234,15 +234,13 @@ class YoloObjectDetector(object):
 		# repeat the ground truth for class probabilities for each cell.
 		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
 
-		# calculate cost
-		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
-			T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
-		
+			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
+		pdb.set_trace()	
 		return cost / T.maximum(1., truth.shape[0])
 
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
