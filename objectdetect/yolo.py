@@ -142,6 +142,8 @@ class YoloObjectDetector(object):
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
 		and the object is higher than any other ground truth object. and the rest of the objectness scores are pushed
 		towards zero.
+
+		Returns the cost and list of variable that I don't want to backpropagate through.
 		'''
 		
 		# calculate height/width of individual cell
@@ -241,8 +243,10 @@ class YoloObjectDetector(object):
 			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
+
+		cost /= T.maximum(1., truth.shape[0])
 		#pdb.set_trace()	
-		return cost / T.maximum(1., truth.shape[0])
+		return cost, [iou]
 
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
@@ -357,14 +361,15 @@ class YoloObjectDetector(object):
 		logfile.write('Getting cost...\n')
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
-		cost = self._get_cost_optim_multi(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test = self._get_cost_optim_multi(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost, constants = self._get_cost_optim_multi(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test, _ = self._get_cost_optim_multi(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		
 		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
 
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
-		updates = rmsprop(cost, self.params, learning_rate=lr)
+		grads = T.grad(cost, self.params, consider_constant=constants)
+		updates = rmsprop(grads, self.params, learning_rate=lr)
 
 		logfile.write('Compiling...\n')
 		print('Compiling...'); time.sleep(0.1)
