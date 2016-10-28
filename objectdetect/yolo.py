@@ -234,6 +234,7 @@ class YoloObjectDetector(object):
 		# repeat the ground truth for class probabilities for each cell.
 		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
 
+		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
