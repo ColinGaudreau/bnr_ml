@@ -241,7 +241,7 @@ class YoloObjectDetector(object):
 			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
-		pdb.set_trace()	
+		#pdb.set_trace()	
 		return cost / T.maximum(1., truth.shape[0])
 
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
