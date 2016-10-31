@@ -162,13 +162,13 @@ class YoloObjectDetector(object):
 		conf_idx = T.arange(4,5*B,5)
 
 		# Get position predictions with offsets.
-		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
-		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
+		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)**2
+		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)**2
 		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3), output[:,h_idx].dimshuffle(0,'x',1,2,3)
 		pred_conf = output[:,conf_idx].dimshuffle(0,'x',1,2,3)
 		pred_class = output[:,-C:].dimshuffle(0,'x',1,2,3)
 		
-		pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
+		#pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
 
 		x_idx, y_idx = T.arange(0,truth.shape[1],4+C), T.arange(1,truth.shape[1],4+C)
 		w_idx, h_idx = T.arange(2,truth.shape[1],4+C), T.arange(3,truth.shape[1],4+C)
@@ -252,8 +252,8 @@ class YoloObjectDetector(object):
 
 		cost = lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
                         lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
-                        lmbda_coord * T.sum((pred_w - truth_w.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
-                        lmbda_coord * T.sum((pred_h - truth_h.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2)
+                        lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_for_cell.nonzero()]**2) + \
+                        lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_for_cell.nonzero()]**2)
 
 		cost /= T.maximum(1., truth.shape[0])
 		pdb.set_trace()	
