@@ -7,9 +7,12 @@ from bnr_ml.utils.helpers import meshgrid2D, softmax, bitwise_not
 from collections import OrderedDict
 from tqdm import tqdm
 import time
+
 from lasagne import layers
-from lasagne.updates import rmsprop
+from lasagne.updates import rmsprop, sgd
+
 from itertools import tee
+
 import pdb
 
 class YoloObjectDetectorError(Exception):
@@ -151,6 +154,7 @@ class YoloObjectDetector(object):
 
 		# get the offset of each cell
 		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_width), T.arange(0,1,block_height))
+		offset_x, offset_y = T.zeros_like(offset_x), T.zeros_like(offset_y)
 
 		# get indices for x,y,w,h,object-ness for easy access
 		x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B, 5)
@@ -235,7 +239,8 @@ class YoloObjectDetector(object):
 
 		# repeat the ground truth for class probabilities for each cell.
 		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
-
+	
+		'''
 		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
@@ -243,10 +248,16 @@ class YoloObjectDetector(object):
 			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
+		'''
+
+		cost = lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
+                        lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
+                        lmbda_coord * T.sum((pred_w - truth_w.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2) + \
+                        lmbda_coord * T.sum((pred_h - truth_h.dimshuffle(0,1,'x','x','x'))[obj_for_cell.nonzero()]**2)
 
 		cost /= T.maximum(1., truth.shape[0])
-		#pdb.set_trace()	
-		return cost, [iou]
+		pdb.set_trace()	
+		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
 
 	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
 		lmbda_coord = T.as_tensor_variable(lmbda_coord)
@@ -370,7 +381,8 @@ class YoloObjectDetector(object):
 		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
 		grads = T.grad(cost, self.params, consider_constant=constants)
 		updates = rmsprop(grads, self.params, learning_rate=lr)
-
+		#updates = sgd(grads, self.params, learning_rate=lr)
+		
 		logfile.write('Compiling...\n')
 		print('Compiling...'); time.sleep(0.1)
 		ti = time.time()
