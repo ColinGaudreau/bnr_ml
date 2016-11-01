@@ -3,7 +3,8 @@ from theano import tensor as T
 import numpy as np
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid2D, softmax, bitwise_not
+from bnr_ml.utils.helpers import meshgrid2D, bitwise_not
+from bnr_ml.utils.nonlinearities import softmax, smooth_l1, safe_sqrt
 from collections import OrderedDict
 from tqdm import tqdm
 import time
@@ -133,8 +134,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[bitwise_not(obj_in_cell_and_resp).nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth[:,0].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_y - truth[:,1].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((safe_sqrt(pred_w) - truth_w.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((safe_sqrt(pred_h) - truth_h.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
 		
 		return cost / T.maximum(1., truth.shape[0])
@@ -163,7 +164,8 @@ class YoloObjectDetector(object):
 		# Get position predictions with offsets.
 		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
 		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
-		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3)**2, output[:,h_idx].dimshuffle(0,'x',1,2,3)**2
+		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3), output[:,h_idx].dimshuffle(0,'x',1,2,3)
+		pred_w, pred_h = smooth_l1(pred_w), smooth_l1(pred_h)
 		pred_conf = output[:,conf_idx].dimshuffle(0,'x',1,2,3)
 		pred_class = output[:,-C:].dimshuffle(0,'x',1,2,3)
 		
@@ -243,8 +245,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 			lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((pred_w - truth_w.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((pred_h - truth_h.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_w.sqrt() - truth_w.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_h.sqrt() - truth_h.dimshuffle(0,1,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
