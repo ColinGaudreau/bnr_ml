@@ -13,10 +13,7 @@ def softmax(mat, axis=1):
 	return T.exp(logsoftmax)
 
 def smooth_l1(val):
-	less_than_one = T.abs(val) < 1
-	greater_than_one = T.abs(val) >= 1
-	cost = T.set_subtensor(val[less_than_one.nonzero()], 0.5 * val[less_than_one.nonzero()]**2)
-	cost = T.set_subtensor(val[greater_than_one.nonzero()], T.abs(val[less_than_one.nonzero()]) - 0.5)
+	cost = T.switch(T.abs_(val)<1, 0.5 * val**2, T.abs_(val) - 0.5)
 	return cost
 
 def safe_sqrt(val, eps=1e-3):
