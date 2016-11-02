@@ -349,17 +349,18 @@ class YoloObjectDetector(object):
 		return train_loss, test_loss
 
 	@staticmethod
-	def nms(output, S, B, C, thresh=.3):
+	def nms(output, S, B, C, thresh=.3, overlap=.2):
 		obj_idx = range(4,output.shape[0] - C, 5)
 		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
 		scores_flat = scores.flatten()
-		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > tresh]
+		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > thresh]
 
 		preds = []
 		for i in range(above_thresh_idx.size):
 			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
 			pred = np.copy(output[idx[0]:idx[0] + 4, idx[1], idx[2]])
-			pred = np.concatenate((pred, scores[idx[0],idx[1],idx[2]], [np.argmax(output[-C:,idx[1],idx[2]])]))
+			pred[0], pred[1] = pred[0] + np.float_(idx[2])/S[1], pred[1] + np.float_(idx[1])/S[0]
+			pred = np.concatenate((pred, [scores[idx[0],idx[1],idx[2]], np.argmax(output[-C:,idx[1],idx[2]])]))
 			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
 			adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
 			adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5
@@ -367,35 +368,42 @@ class YoloObjectDetector(object):
 			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
 		preds = np.asarray(preds)
-
+		
+		if preds.shape[0] == 0:
+			return np.zeros((0,6))
+		
 		def _nms(preds, thresh):
+			if preds.shape[0] == 0:
+				return preds
 			idx = np.argsort(preds[:,4])
 			pick = np.zeros_like(idx).astype(np.int32)
-			area = (preds[:,2] - preds[:,0] + 1) * (preds[:,3] - preds[:,1] + 1)
+			area = np.maximum(0, (preds[:,2] - preds[:,0])) * np.maximum(0, (preds[:,3] - preds[:,1]))
 			counter = 0
 			while idx.size > 0:
 				last = idx.size - 1
 				i = idx[last]
 				pick[counter] = i
+				counter = counter + 1
 
 				xi = np.maximum(preds[i,0], preds[idx[0:last - 1],0])
-				xf = np.maximum(preds[i,1], preds[idx[0:last - 1],1])
-				yi = np.maximum(preds[i,2], preds[idx[0:last - 1],2])
-				yf = np.maximum(preds[i,3], preds[idx[0:last - 1],3])
+				xf = np.minimum(preds[i,2], preds[idx[0:last - 1],2])
+				yi = np.maximum(preds[i,1], preds[idx[0:last - 1],1])
+				yf = np.minimum(preds[i,3], preds[idx[0:last - 1],3])
 
-				w, h = np.maximum(0., xf - xi + 1), np.maximum(0., yf - yi + 1)
-
-				o = w * h / area[idx[0:last - 1]]
+				w, h = np.maximum(0., xf - xi), np.maximum(0., yf - yi)
+				isec = w * h
+				o = isec / (area[idx[last]] + area[idx[0:last - 1]] - isec)
 				idx = np.delete(idx, last, 0)
-				I = I[o<=thresh]
+				idx = idx[o<thresh]
+
 			pick = pick[0:counter]
 			return preds[pick,:]
-
-		nms_preds = np.zeros((0,0))
+		
+		nms_preds = np.zeros((0,6))
 		for cls in range(C):
 			idx = preds[:,-1] == cls
 			cls_preds = preds[idx]
-			cls_preds = _nms(cls_preds, thresh)
+			cls_preds = _nms(cls_preds, overlap)
 			nms_preds = np.concatenate((nms_preds, cls_preds), axis=0)
 		return nms_preds
 
@@ -407,23 +415,27 @@ class YoloObjectDetector(object):
 		if im.dtype != np.uint8:
 			im = im.astype(np.uint8)
 		im = Image.fromarray(im)
+
+		if coords.shape[0] == 0:
+			return im
+
 		draw = ImageDraw.Draw(im)
 
 		unique_classes = np.unique(coords[:,-1])
 		for cls in unique_classes:
 			class_idx = coords[:,-1] == cls
-			class_coords = coords[class_coords]
-			color = tuple(255 * np.random.rand(3,)) # color for class
+			class_coords = coords[class_idx]
+			color = tuple(np.int_(255 * np.random.rand(3,))) # color for class
 			for i in range(class_coords.shape[0]):
 				coord = class_coords[i,:4]
 				coord[[0,2]] *= im.size[1]
 				coord[[1,3]] *= im.size[0]
 				coord = np.int_(coord).tolist()
 				draw.rectangle(coord, outline=color)
-				text = 'confidence: %.2f' % coords[i, -2]
+				text = 'confidence: %.2f' % class_coords[i, -2]
 				if label_map is not None:
-					text = '%s, %s' % (label_map(coords[i,-1]), text)
-				draw.text([coord[0], coord[1] - 10], text)
+					text = '%s, %s' % (label_map(class_coords[i,-1]), text)
+				draw.text([coord[0], coord[1] - 10], text, fill=color)
 
 		return im
 
