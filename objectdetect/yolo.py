@@ -8,6 +8,7 @@ from bnr_ml.utils.nonlinearities import softmax, smooth_l1, safe_sqrt
 from collections import OrderedDict
 from tqdm import tqdm
 import time
+from PIL import Image, ImageDraw
 
 from lasagne import layers
 from lasagne.updates import rmsprop, sgd
@@ -16,21 +17,18 @@ from itertools import tee
 
 import pdb
 
-class YoloObjectDetectorError(Exception):
-		pass
-
-
 class YoloObjectDetector(object):
 	'''
 
 	'''
 	def __init__(
-		self,
-		network,
-		input_shape,
-		num_classes,
-		S,
-		B):
+			self,
+			network,
+			input_shape,
+			num_classes,
+			S,
+			B
+		):
 		'''
 		network:
 		--------
@@ -60,7 +58,10 @@ class YoloObjectDetector(object):
 
 		self.params = layers.get_all_params(network['output'])
 
-	def _get_cost_optim(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
+	def _get_cost__outdated(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
+		'''
+			Takes only one annotation, this limits training to one object per image (which is bad).
+		'''
 		# calculate height/width of individual cell
 		block_height, block_width = 1. / S[0], 1./ S[1]
 
@@ -140,7 +141,7 @@ class YoloObjectDetector(object):
 		
 		return cost / T.maximum(1., truth.shape[0])
 
-	def _get_cost_optim_multi(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-3):
+	def _get_cost(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-3):
 		'''
 		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
@@ -253,99 +254,6 @@ class YoloObjectDetector(object):
 		pdb.set_trace()	
 		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
 
-	def _get_cost(self, output, target, lmbda_coord=10., lmbda_noobj = .1, iou_thresh = .1):
-		lmbda_coord = T.as_tensor_variable(lmbda_coord)
-		lmbda_noobj = T.as_tensor_variable(lmbda_noobj)
-		iou_thresh = T.as_tensor_variable(iou_thresh)
-		# output = self.output
-		#if isinstance(output, AbstractNNetLayer):
-		#	output = output.get_output()
-		dims, probs = target[:,:4], target[:,4:]
-
-		def scale_dims(dims, i, j):
-			dims = T.set_subtensor(dims[:,0], dims[:,0] - float(i) / self.S[0])
-			dims = T.set_subtensor(dims[:,1], dims[:,1] - float(j) / self.S[1])
-			return dims
-		def unscale_dims(dims, i, j):
-			dims = T.set_subtensor(dims[:,0], dims[:,0] + float(i) / self.S[0])
-			dims = T.set_subtensor(dims[:,1], dims[:,1] + float(j) / self.S[1])
-			return dims
-		def iou_score(box1, box2, eps=1e-3):
-			xi = T.maximum(box1[:,0], box2[:,0])
-			yi = T.maximum(box1[:,1], box2[:,1])
-			xf = T.minimum(box1[:,0] + box1[:,2], box2[:,0] + box2[:,2])
-			yf = T.minimum(box1[:,1] + box1[:,3], box2[:,1] + box2[:,3])
-
-			isec = T.maximum((xf - xi) * (yf - yi), 0.)
-			union = box1[:,2]*box1[:,3] + box2[:,2]*box2[:,3] - isec
-			return isec / (union + eps)
-
-		cost = T.as_tensor_variable(0.)
-		for i in range(self.S[0]):
-			for j in range(self.S[1]):
-				preds_ij = []
-				box_ious = []
-
-				dims = scale_dims(dims, i, j)
-
-				for k in range(self.B):
-					pred_ijk = output[:,k*5:(k+1)*5,i,j] # single prediction for cell and box
-
-					# calc iou score
-					iou = iou_score(dims, pred_ijk)
-
-					# append to iou list (iou scores for each box B)
-					preds_ij.append(pred_ijk.dimshuffle(0,1,'x'))
-					box_ious.append(iou.dimshuffle(0,'x'))
-
-				# Determine if the image intersects with the cell
-				iou = iou_score(dims, np.asarray([[0., 0., 1./self.S[0], 1./self.S[1]]]))
-
-				is_not_in_cell = (iou < iou_thresh).nonzero()
-
-				preds_ij = T.concatenate(preds_ij, axis=2)
-				box_ious = T.concatenate(box_ious, axis=1)
-
-				iou_max = T.argmax(box_ious, axis=1)
-
-				# get final values for predictions
-				row,col = meshgrid2D(T.arange(preds_ij.shape[0]), T.arange(preds_ij.shape[1]))
-				dep,col = meshgrid2D(iou_max, T.arange(preds_ij.shape[1]))
-
-				preds_ij = preds_ij[row,col,dep].reshape(preds_ij.shape[:2])
-
-				# get final values for IoUs
-				row = T.arange(preds_ij.shape[0])
-				box_ious = box_ious[row, iou_max]
-
-				# is_not_responsible = (box_ious < iou_thresh).nonzero()
-				box_ious = T.set_subtensor(box_ious[is_not_in_cell], 0.)
-
-				cost_ij_t1 = (preds_ij[:,0] - dims[:,0])**2 + (preds_ij[:,1] - dims[:,1])**2
-				cost_ij_t1 +=  (T.sqrt(preds_ij[:,2]) - T.sqrt(dims[:,2]))**2 + (T.sqrt(preds_ij[:,3]) - T.sqrt(dims[:,3]))**2
-
-				conf_in_cell = T.set_subtensor(preds_ij[:,4][is_not_in_cell], 0.) # set values which don't intersect with cell to 0.
-
-				cost_ij_t1 += 0*(conf_in_cell - box_ious)**2
-
-				cost_ij_t1 *= lmbda_coord
-				
-				conf_out_cell = T.set_subtensor(preds_ij[:,4][T.invert(is_not_in_cell)], 0.) # set values which do interset with cell to 0.
-				cost_ij_t1 += 0 * lmbda_noobj * (conf_out_cell - 0.)**2 # set non-intersecting cell confidences to 0.
-
-				cost_ij_t2 = lmbda_noobj * T.sum((probs - output[:,-self.num_classes:,i,j])**2, axis=1)
-
-				#cost_ij_t1 = T.set_subtensor(cost_ij_t1[is_box_not_in_cell], 0.)
-				cost_ij_t2 = T.set_subtensor(cost_ij_t2[is_not_in_cell], 0.)
-
-				cost += cost_ij_t1 + cost_ij_t2
-
-				dims = unscale_dims(dims, i, j)
-
-		cost = cost.mean()
-
-		return cost
-
 	def _get_updates(self, cost, params, lr=1e-4):
 		lr = T.as_tensor_variable(lr)
 		updates = OrderedDict()
@@ -355,7 +263,19 @@ class YoloObjectDetector(object):
 
 		return updates
 
-	def train(self, train_gen, test_gen, batch_size=50, epochs=10, train_test_split=0.8, lr=1e-4, momentum=0.9, lmbda_coord=5., lmbda_noobj=0.5, target=None, seed=1991, logfile='/dev/stdout'):
+	def train(
+			self,
+			train_gen,
+			test_gen,
+			epochs=10,
+			lr=1e-4,
+			momentum=0.9,
+			lmbda_coord=5.,
+			lmbda_noobj=0.5,
+			target=None,
+			seed=1991, 
+			logfile='/dev/stdout'
+		):
 		np.random.seed(seed)
 		
 		logfile = open(logfile, 'w')
@@ -366,8 +286,8 @@ class YoloObjectDetector(object):
 		logfile.write('Getting cost...\n')
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
-		cost, constants = self._get_cost_optim_multi(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test, _ = self._get_cost_optim_multi(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost, constants = self._get_cost(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test, _ = self._get_cost(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		
 		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
@@ -385,11 +305,6 @@ class YoloObjectDetector(object):
 		
 		logfile.write('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 		print("Compiling functions took %.4f seconds" % (time.time() - ti,))
-
-		# Ntrain = np.int_(X.shape[0] * train_test_split)
-
-		# Xtrain, ytrain = X[:Ntrain], y[:Ntrain]
-		# Xtest, ytest = X[Ntrain:], y[Ntrain:]
 
 		train_loss = np.zeros((epochs,))
 		test_loss = np.zeros((epochs,))
@@ -432,7 +347,84 @@ class YoloObjectDetector(object):
 		logfile.close()
 		return train_loss, test_loss
 
+	@staticmethod
+	def nms(output, S, B, C, thresh=.3):
+		obj_idx = range(4,output.shape[0] - C, 5)
+		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
+		scores_flat = scores.flatten()
+		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > tresh]
 
+		preds = []
+		for i in range(above_thresh_idx.size):
+			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
+			pred = np.copy(output[idx[0]:idx[0] + 4, idx[1], idx[2]])
+			pred = np.concatenate((pred, scores[idx[0],idx[1],idx[2]], [np.argmax(output[-C:,idx[1],idx[2]])]))
+			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
+			adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
+			adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5
+			pred[[2,3]] = adj_wh
+			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
+			preds.append(pred)
+		preds = np.asarray(preds)
+
+		def _nms(preds, thresh):
+			idx = np.argsort(preds[:,4])
+			pick = np.zeros_like(idx).astype(np.int32)
+			area = (preds[:,2] - preds[:,0] + 1) * (preds[:,3] - preds[:,1] + 1)
+			counter = 0
+			while idx.size > 0:
+				last = idx.size - 1
+				i = idx[last]
+				pick[counter] = i
+
+				xi = np.maximum(preds[i,0], preds[idx[0:last - 1],0])
+				xf = np.maximum(preds[i,1], preds[idx[0:last - 1],1])
+				yi = np.maximum(preds[i,2], preds[idx[0:last - 1],2])
+				yf = np.maximum(preds[i,3], preds[idx[0:last - 1],3])
+
+				w, h = np.maximum(0., xf - xi + 1), np.maximum(0., yf - yi + 1)
+
+				o = w * h / area[idx[0:last - 1]]
+				idx = np.delete(idx, last, 0)
+				I = I[o<=thresh]
+			pick = pick[0:counter]
+			return preds[pick,:]
+
+		nms_preds = np.zeros((0,0))
+		for cls in range(C):
+			idx = preds[:,-1] == cls
+			cls_preds = preds[idx]
+			cls_preds = _nms(cls_preds, thresh)
+			nms_preds = np.concatenate((nms_preds, cls_preds), axis=0)
+		return nms_preds
+
+	@staticmethod
+	def draw_coord(im, coords, label_map = None):
+		coords = np.copy(coords)
+		if im.max() <= 1:
+			im = im * 255
+		if im.dtype != np.uint8:
+			im = im.astype(np.uint8)
+		im = Image.fromarray(im)
+		draw = ImageDraw.Draw(im)
+
+		unique_classes = np.unique(coords[:,-1])
+		for cls in unique_classes:
+			class_idx = coords[:,-1] == cls
+			class_coords = coords[class_coords]
+			color = tuple(255 * np.random.rand(3,)) # color for class
+			for i in range(class_coords.shape[0]):
+				coord = class_coords[i,:4]
+				coord[[0,2]] *= im.size[1]
+				coord[[1,3]] *= im.size[0]
+				coord = np.int_(coord).tolist()
+				draw.rectangle(coord, outline=color)
+				text = 'confidence: %.2f' % coords[i, -2]
+				if label_map is not None:
+					text = '%s, %s' % (label_map(coords[i,-1]), text)
+				draw.text([coord[0], coord[1] - 10], text)
+
+		return im
 
 
 
