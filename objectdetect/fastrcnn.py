@@ -144,7 +144,7 @@ class FastRCNNDetector(object):
 		for i in range(0,annotations.__len__(),2):
 			X, y = np.zeros((num_rios * per_batch, 3) + new_size), np.zeros((num_rios * per_batch, 4 + (num_classes + 1)))
 			cnt = 0
-			for j in range(per_batch):
+			for j in range(min(per_batch, annotations.__len__() - i)):
 				annotation = annotations[i+j]
 				im = imread(annotation[0]['image'])
 
@@ -182,9 +182,10 @@ class FastRCNNDetector(object):
 							coord[2] = np.log(obj_box.w / new_box.w)
 							coord[3] = np.log(obj_box.h / new_box.h)
 						new_im = new_box.subimage(im)
-						X[cnt] = swap_axes(resize(new_im, new_size))
-						y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
-						cnt += 1
+						if np.prod(new_im.shape) > 0:
+							X[cnt] = swap_axes(resize(new_im, new_size))
+							y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
+							cnt += 1
 			yield X[:cnt].astype(theano.config.floatX), y[:cnt].astype(theano.config.floatX)
 
 
