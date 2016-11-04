@@ -58,10 +58,10 @@ class FastRCNNDetector(object):
 
 		class_idx = target[:,-(self.num_classes + 1):].argmax(axis=1)
 		mask = T.ones((target.shape[0], 1))
-		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].sum(axis=1,keepdims=True), 0), 0, 1) # mask for non-object ground truth labels
+		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), num_classes), 0, 1) # mask for non-object ground truth labels
 
-		cost = categorical_crossentropy(detection_output, target[:,:self.num_classes + 1])
-		cost += lmbda * mask * T.sum(smooth_l1(localization_output[:,class_idx] - target[:,-4:]), axis=1)
+		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
+		cost += lmbda * mask * T.sum(smooth_l1(localization_output[:,class_idx] - target[:,:4]), axis=1)
 
 		return T.mean(cost)
 
