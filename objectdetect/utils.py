@@ -28,7 +28,10 @@ class BoundingBox(object):
 	def iou(self, box):
 		isec = self.intersection(box)
 		union = self.size + box.size - isec.size
-		return isec.size/ union
+		if union > 0:
+			return isec.size
+		else:
+			return 0.
 	def intersection(self, box):
 		new_xi = max(self.xi, box.xi)
 		new_yi = max(self.yi, box.yi)
