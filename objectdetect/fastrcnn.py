@@ -13,7 +13,7 @@ from skimage.transform import resize
 
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox, transform_coord
-from bnr_ml.utils.helpers import meshgrid2d
+from bnr_ml.utils.helpers import meshgrid2D
 
 from copy import deepcopy
 from itertools import tee
@@ -61,7 +61,7 @@ class FastRCNNDetector(object):
 		mask = T.ones((target.shape[0], 1))
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 
-		corr_loc, _ = meshgrid2d(T.arange(localization_output.shape[1]), T.arange(localization_output.shape[0]))
+		corr_loc, _ = meshgrid2D(T.arange(localization_output.shape[1]), T.arange(localization_output.shape[0]))
 		corr_loc = T.eq(corr_loc, class_idx)
 		corr_loc = T.repeat(corr_loc, 4, axis=2)
 
