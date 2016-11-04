@@ -128,3 +128,61 @@ def nms(preds, thresh):
 		idx = idx[o<thresh]
 	pick = pick[0:counter]
 	return preds[pick,:]
+
+def draw_coord(im, coords, label_map=None):
+		coords = np.copy(coords)
+		if im.max() <= 1:
+			im = im * 255
+		if im.dtype != np.uint8:
+			im = im.astype(np.uint8)
+		im = Image.fromarray(im)
+
+		if coords.shape[0] == 0:
+			return im
+
+		draw = ImageDraw.Draw(im)
+		
+		def draw_rects(draw, size, coords, color=(255, 0, 0)):
+			for i in range(coords.shape[0]):
+				coord = coords[i, :4]
+				coord[[0,2]] *= size[1]
+				coord[[1,3]] *= size[0]
+				coord = np.int_(coord).tolist()
+				draw.rectangle(coord, outline=color)
+
+		if coord.shape[1] > 1:
+			for cls in unique_classes:
+				class_idx = coords[:,-1] == cls
+				class_coords = coords[class_idx]
+				color = tuple(np.int_(255 * np.random.rand(3,))) # color for class
+				for i in range(class_coords.shape[0]):
+					draw_rects(draw, im.shape, class_coords, color)
+					text = 'confidence: %.2f' % class_coords[i, -2]
+					if label_map is not None:
+						text = '%s, %s' % (label_map(class_coords[i,-1]), text)
+					draw.text([coord[0], coord[1] - 10], text, fill=color)
+		else:
+			draw_rects(draw, im.shape, coords)
+
+		return im
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

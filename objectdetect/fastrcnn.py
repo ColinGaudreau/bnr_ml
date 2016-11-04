@@ -36,6 +36,7 @@ class FastRCNNDetector(object):
 		self.network = network
 		self.num_classes = num_classes
 		self.input = network['input'].input_var
+		self.input_shape = network['input'].shape[2:]
 
 		def reshape_loc_layer(loc_layer, num_classes):
 			return loc_layer.reshape((-1, num_classes + 1, 4))
@@ -50,6 +51,9 @@ class FastRCNNDetector(object):
 			if param not in params:
 				params.append(param)
 		self.params = params
+
+		# for detection
+		self._trained = false
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1.):
 		'''
@@ -79,6 +83,7 @@ class FastRCNNDetector(object):
 		):
 		'''
 		'''	
+		self._trained = True
 		target = T.matrix('target')
 
 		print_obj.println('Getting cost...')
@@ -127,7 +132,29 @@ class FastRCNNDetector(object):
 
 		return train_loss[train_loss > 0], test_loss[test_loss > 0]
 
+	def detect(self, im):
+		if im.shape.__len__() == 2:
+			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+		if im.shape[2] > 3:
+			im = im[:,:,:3]
+		if im.max() > 1:
+			im = im / 255.
+		if im.dtype != theano.config.floatX:
+			im = im.astype(theano.config.floatX)
 
+		im = resize(self.input_shape + (3,))
+
+		if self._trained:
+			self._detect_fn = theano.function([self.input], [self.detect_test, self.localize_test])
+			self._trained = False
+
+		preds = self._detect_fn(im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1))
+		class_score, coords = preds[0][0], preds[1][0]
+
+		coords[[2,3]] = np.exp(coord[[2,3]])
+
+		return class_score, coords
+		
 	@staticmethod
 	def generate_data(
 			annotations,
