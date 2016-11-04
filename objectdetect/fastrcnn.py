@@ -182,10 +182,11 @@ class FastRCNNDetector(object):
 						coord[3] = np.log(obj_box.h / new_box.h)
 
 					new_im = new_box.subimage(im)
-					X[cnt] = swap_axes(resize(new_im, new_size))
-					y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
-					cnt += 1
-			yield X[:cnt], y[:cnt]
+					if np.prod(new_im.shape[:2]) > 0:
+						X[cnt] = swap_axes(resize(new_im, new_size))
+						y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
+						cnt += 1
+			yield X[:cnt].astype(theano.config.floatX), y[:cnt].astype(theano.config.floatX)
 
 
 
