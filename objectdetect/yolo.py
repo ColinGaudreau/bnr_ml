@@ -381,38 +381,6 @@ class YoloObjectDetector(object):
 			nms_preds = np.concatenate((nms_preds, cls_preds), axis=0)
 		return nms_preds
 
-	@staticmethod
-	def draw_coord(im, coords, label_map = None):
-		coords = np.copy(coords)
-		if im.max() <= 1:
-			im = im * 255
-		if im.dtype != np.uint8:
-			im = im.astype(np.uint8)
-		im = Image.fromarray(im)
-
-		if coords.shape[0] == 0:
-			return im
-
-		draw = ImageDraw.Draw(im)
-
-		unique_classes = np.unique(coords[:,-1])
-		for cls in unique_classes:
-			class_idx = coords[:,-1] == cls
-			class_coords = coords[class_idx]
-			color = tuple(np.int_(255 * np.random.rand(3,))) # color for class
-			for i in range(class_coords.shape[0]):
-				coord = class_coords[i,:4]
-				coord[[0,2]] *= im.size[1]
-				coord[[1,3]] *= im.size[0]
-				coord = np.int_(coord).tolist()
-				draw.rectangle(coord, outline=color)
-				text = 'confidence: %.2f' % class_coords[i, -2]
-				if label_map is not None:
-					text = '%s, %s' % (label_map(class_coords[i,-1]), text)
-				draw.text([coord[0], coord[1] - 10], text, fill=color)
-
-		return im
-
 
 
 
