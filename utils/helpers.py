@@ -9,7 +9,7 @@ from skimage.transform import resize, rotate
 import pdb
 
 class StreamPrinter(object):
-	def print(self, str):
+	def println(self, str):
 		raise NotImplementedError
 	def close(self):
 		raise NotImplementedError
@@ -18,7 +18,7 @@ class NotebookPrinter(StreamPrinter):
 	def __init__(self, *args):
 		self.streams = args
 
-	def print(self, str):
+	def println(self, str):
 		for stream in self.streams:
 			stream.write('%s\n' % str)
 
