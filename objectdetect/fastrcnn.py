@@ -59,11 +59,13 @@ class FastRCNNDetector(object):
 
 		class_idx = target[:,-(self.num_classes + 1):].argmax(axis=1, keepdims=True)
 		mask = T.ones((target.shape[0], 1))
-		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), num_classes), 0, 1) # mask for non-object ground truth labels
+		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 
 		corr_loc, _ = meshgrid2d(T.arange(localization_output.shape[1]), T.arange(localization_output.shape[0]))
 		corr_loc = T.eq(corr_loc, class_idx)
 		corr_loc = T.repeat(corr_loc, 4, axis=2)
+
+		pdb.set_trace()
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[corr_loc.nonzero()] - target[:,:4]), axis=1)
@@ -111,6 +113,7 @@ class FastRCNNDetector(object):
 				test_gen, test_gen_backup = tee(train_gen)
 
 				for Xbatch, ybatch in train_gen:
+					pdb.set_trace()
 					err = train_fn(Xbatch, ybatch)
 					train_loss_batch.append(err)
 					print_obj.println('Batch error: %.4f' % err)
