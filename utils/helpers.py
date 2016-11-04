@@ -8,6 +8,24 @@ from skimage.color import rgb2gray
 from skimage.transform import resize, rotate
 import pdb
 
+class StreamPrinter(object):
+	def print(self, str):
+		raise NotImplementedError
+	def close(self):
+		raise NotImplementedError
+
+class NotebookPrinter(StreamPrinter):
+	def __init__(self, *args):
+		self.streams = args
+
+	def print(self, str):
+		for stream in self.streams:
+			stream.write('%s\n' % str)
+
+	def close(self):
+		for stream in self.streams:
+			stream.close()
+
 def save_all_layers(network_output, dirname):
 	layers = lasagne.layers.get_all_layers(network_output)
 	lcnt = 1

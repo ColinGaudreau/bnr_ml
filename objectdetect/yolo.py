@@ -5,6 +5,7 @@ from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
 from bnr_ml.utils.helpers import meshgrid2D, bitwise_not
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, safe_sqrt
+from bnr_ml.objectdetect import utils
 from collections import OrderedDict
 from tqdm import tqdm
 import time
@@ -372,38 +373,11 @@ class YoloObjectDetector(object):
 		if preds.shape[0] == 0:
 			return np.zeros((0,6))
 		
-		def _nms(preds, thresh):
-			if preds.shape[0] == 0:
-				return preds
-			idx = np.argsort(preds[:,4])
-			pick = np.zeros_like(idx).astype(np.int32)
-			area = np.maximum(0, (preds[:,2] - preds[:,0])) * np.maximum(0, (preds[:,3] - preds[:,1]))
-			counter = 0
-			while idx.size > 0:
-				last = idx.size - 1
-				i = idx[last]
-				pick[counter] = i
-				counter = counter + 1
-
-				xi = np.maximum(preds[i,0], preds[idx[0:last - 1],0])
-				xf = np.minimum(preds[i,2], preds[idx[0:last - 1],2])
-				yi = np.maximum(preds[i,1], preds[idx[0:last - 1],1])
-				yf = np.minimum(preds[i,3], preds[idx[0:last - 1],3])
-
-				w, h = np.maximum(0., xf - xi), np.maximum(0., yf - yi)
-				isec = w * h
-				o = isec / (area[idx[last]] + area[idx[0:last - 1]] - isec)
-				idx = np.delete(idx, last, 0)
-				idx = idx[o<thresh]
-
-			pick = pick[0:counter]
-			return preds[pick,:]
-		
 		nms_preds = np.zeros((0,6))
 		for cls in range(C):
 			idx = preds[:,-1] == cls
 			cls_preds = preds[idx]
-			cls_preds = _nms(cls_preds, overlap)
+			cls_preds = utils.nms(cls_preds, overlap)
 			nms_preds = np.concatenate((nms_preds, cls_preds), axis=0)
 		return nms_preds
 
