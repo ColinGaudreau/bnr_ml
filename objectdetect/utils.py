@@ -84,13 +84,14 @@ class BoundingBox(object):
 	@staticmethod
 	def gen_randombox(iou, box, eps=.9):
 		angle = 2 * np.pi * np.random.rand()
-		delx, dely = eps*np.cos(angle), eps*np.sin(angle)
+		vec = np.random.rand(4)
+		vec /= np.sqrt(np.sum(vec**2))
 		new_box = box.copy()
 		while new_box.iou(box) > iou:
-			new_box.xi += delx
-			new_box.yi += dely
-			new_box.xf += delx
-			new_box.yf += dely
+			new_box.xi += vec[0]
+			new_box.yi += vec[1]
+			new_box.xf += vec[2]
+			new_box.yf += vec[3]
 		return new_box
 
 def transform_coord(coord, new_size, old_size, normalize=True):

@@ -154,7 +154,7 @@ class FastRCNNDetector(object):
 		coords[[2,3]] = np.exp(coord[[2,3]])
 
 		return class_score, coords
-		
+
 	@staticmethod
 	def generate_data(
 			annotations,
