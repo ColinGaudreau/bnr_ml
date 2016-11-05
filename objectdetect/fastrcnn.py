@@ -53,7 +53,7 @@ class FastRCNNDetector(object):
 		self.params = params
 
 		# for detection
-		self._trained = false
+		self._trained = False
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1.):
 		'''
@@ -109,7 +109,7 @@ class FastRCNNDetector(object):
 				test_loss_batch = []
 
 				train_gen, train_gen_backup = tee(train_gen)
-				test_gen, test_gen_backup = tee(train_gen)
+				test_gen, test_gen_backup = tee(test_gen)
 
 				for Xbatch, ybatch in train_gen:
 					err = train_fn(Xbatch, ybatch)
@@ -117,7 +117,7 @@ class FastRCNNDetector(object):
 					print_obj.println('Batch error: %.4f' % err)
 
 				for Xbatch, ybatch in test_gen:
-					test_loss_batch.append(train_fn(Xbatch, ybatch))
+					test_loss_batch.append(test_fn(Xbatch, ybatch))
 
 				train_loss[epoch] = np.mean(train_loss_batch)
 				test_loss[epoch] = np.mean(test_loss_batch)
@@ -132,7 +132,7 @@ class FastRCNNDetector(object):
 
 		return train_loss[train_loss > 0], test_loss[test_loss > 0]
 
-	def detect(self, im):
+	def detect_im(self, im):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
@@ -142,18 +142,20 @@ class FastRCNNDetector(object):
 		if im.dtype != theano.config.floatX:
 			im = im.astype(theano.config.floatX)
 
-		im = resize(self.input_shape + (3,))
+		im = resize(im, self.input_shape + (3,))
 
-		if self._trained:
+		if self._trained or not hasattr(self, '_detect_fn'):
 			self._detect_fn = theano.function([self.input], [self.detect_test, self.localize_test])
 			self._trained = False
 
-		preds = self._detect_fn(im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1))
-		class_score, coords = preds[0][0], preds[1][0]
+		preds = self._detect_fn(im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX))
+		class_score, coord = preds[0][0], preds[1][0]
+		
+		cls_idx = np.argmax(class_score)
+		coord = coord[cls_idx]
+		coord[[2,3]] = np.exp(coord[[2,3]])
 
-		coords[[2,3]] = np.exp(coord[[2,3]])
-
-		return class_score, coords
+		return class_score, coord
 		
 	@staticmethod
 	def generate_data(
