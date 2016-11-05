@@ -42,7 +42,7 @@ class BoundingBox(object):
 		return BoundingBox(new_xi, new_yi, new_xf, new_yf)
 	def to_arr(self):
 		return [self.xi, self.yi, self.xf, self.yi]
-	def is_valid(self):
+	def isvalid(self):
 		valid = True
 		valid = valid and self.w > 0 and self.h > 0
 		valid = valid and self.xf >= self.xi
