@@ -168,11 +168,12 @@ class FastRCNNDetector(object):
 						ims[cnt] = swap(subim)
 						regions.append(box)
 						cnt += 1
-
-			class_score, coord = self._detect_fn(ims)
-			class_idx = np.argmax(class_score, axis=1)
+			region = np.asarray(regions)
+			class_score, coord = self._detect_fn(ims[:cnt])
+			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score, axis=1) > thresh
 			coord = coord[np.arange(coord.shape[0]), class_idx]
 			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
+			class_score, coord = class_score[obj_idx], coord[obj_idx]
 			for i in range(coord.shape[0]):
 				coord[i,[0,2]] *= regions[i].w
 				coord[i,[1,3]] *= regions[i].h
