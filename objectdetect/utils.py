@@ -104,7 +104,7 @@ def transform_coord(coord, new_size, old_size, normalize=True):
 		new_coord[[1,3]] *= old_size[0] / new_size[0]
 	return new_coord
 
-def nms(preds, thresh):
+def nms(preds, thresh=0.3):
 	if preds.shape[0] == 0:
 		return preds
 	idx = np.argsort(preds[:,4])

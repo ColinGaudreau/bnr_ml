@@ -41,10 +41,10 @@ class FastRCNNDetector(object):
 		def reshape_loc_layer(loc_layer, num_classes):
 			return loc_layer.reshape((-1, num_classes + 1, 4))
 
-		self.detect = get_output(network['detect'], deterministic=False)
-		self.detect_test = get_output(network['detect'], deterministic=True)
-		self.localize = reshape_loc_layer(get_output(network['localize'], deterministic=False), num_classes)
-		self.localize_test = reshape_loc_layer(get_output(network['localize'], deterministic=True), num_classes)
+		self._detect = get_output(network['detect'], deterministic=False)
+		self._detect_test = get_output(network['detect'], deterministic=True)
+		self._localize = reshape_loc_layer(get_output(network['localize'], deterministic=False), num_classes)
+		self._localize_test = reshape_loc_layer(get_output(network['localize'], deterministic=True), num_classes)
 
 		params, params_extra = get_all_params(network['detect']), get_all_params(network['localize'])
 		for param in params_extra:
@@ -87,9 +87,9 @@ class FastRCNNDetector(object):
 		target = T.matrix('target')
 
 		print_obj.println('Getting cost...')
-		cost = self._get_cost(self.detect, self.localize, target, lmbda=lmbda)
+		cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
 		if test_gen is not None:
-			cost_test = self._get_cost(self.detect_test, self.localize_test, target, lmbda=lmbda)
+			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 
 		updates = rmsprop(cost, self.params, learning_rate=lr)
 
@@ -132,7 +132,7 @@ class FastRCNNDetector(object):
 
 		return train_loss[train_loss > 0], test_loss[test_loss > 0]
 
-	def detect_im(self, im):
+	def detect(self, im, proposals=None):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
@@ -142,19 +142,52 @@ class FastRCNNDetector(object):
 		if im.dtype != theano.config.floatX:
 			im = im.astype(theano.config.floatX)
 
-		im = resize(im, self.input_shape + (3,))
-
 		if self._trained or not hasattr(self, '_detect_fn'):
 			self._detect_fn = theano.function([self.input], [self.detect_test, self.localize_test])
 			self._trained = False
 
-		preds = self._detect_fn(im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX))
-		class_score, coord = preds[0][0], preds[1][0]
-		
-		cls_idx = np.argmax(class_score)
-		coord = coord[cls_idx]
-		coord[[2,3]] = np.exp(coord[[2,3]])
-		return class_score, coord
+		swap = lambda im: im.reshape(im.shape + (1,)).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX)
+
+		if proposals is not None:
+			ims = np.zeros((proposals.shape[0],3) + self.input_shape, dtype=theano.config.floatX)
+			cnt = 0
+			regions = []
+			for i in range(proposals.shape[0]):
+				box = BoundingBox(
+					proposals[i, 0],
+					proposals[i, 1],
+					proposals[i, 0] + proposals[i, 2],
+					proposals[i, 1] + proposals[i, 3]
+				)
+				if box.size > 0:
+					subim = box.subimage(im)
+					if np.prod(im.shape) > 0:
+						subim = resize(subim, self.input_shape)
+						ims[count] = subim
+						regions.append(box)
+
+			class_score, coord = self._detect_fn(ims)
+			class_idx = np.argmax(class_score, axis=1)
+			coord = coord[np.arange(coord.shape[0]), class_idx]
+			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
+			for i in range(coord.shape[0]):
+				coord[i,[0,2]] *= regions[i].w
+				coord[i,[1,3]] *= regions[i].h
+				coord[i,0] += regions[i].xi
+				coord[i,1] += regions[i].yi
+				coord[i,[0,2]] /= im.shape[1]
+				coord[i,[1,3]] /= im.shape[0]
+			return class_score, coord
+		else:
+			im = resize(im, self.input_shape + (3,))
+
+			preds = self._detect_fn(swap(im).astype(theano.config.floatX))
+			class_score, coord = preds[0][0], preds[1][0]
+			
+			cls_idx = np.argmax(class_score)
+			coord = coord[cls_idx]
+			coord[[2,3]] = np.exp(coord[[2,3]])
+			return class_score, coord
 		
 	@staticmethod
 	def generate_data(
