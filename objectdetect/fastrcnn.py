@@ -199,14 +199,14 @@ class FastRCNNDetector(object):
 					obj_box = BoundingBox(
 						obj['x'],
 						obj['y'],
-						obj['w'],
-						obj['h']
+						obj['x'] + obj['w'],
+						obj['y'] + obj['h']
 					)
 					new_box = BoundingBox.gen_randombox(iou, obj_box)
 					if new_box.isvalid():
 						if to_be_localized:
-							coord[0] = (new_box.xi - obj_box.xi) / (new_box.w)
-							coord[1] = (new_box.yi - obj_box.yi) / (new_box.h)
+							coord[0] = (obj_box.xi - new_box.xi) / (new_box.w)
+							coord[1] = (obj_box.yi - new_box.yi) / (new_box.h)
 							coord[2] = np.log(obj_box.w / new_box.w)
 							coord[3] = np.log(obj_box.h / new_box.h)
 						new_im = new_box.subimage(im)

@@ -84,7 +84,7 @@ class BoundingBox(object):
 	@staticmethod
 	def gen_randombox(iou, box, eps=.9):
 		angle = 2 * np.pi * np.random.rand()
-		vec = np.random.rand(4)
+		vec = np.random.randn(4)
 		vec /= np.sqrt(np.sum(vec**2))
 		new_box = box.copy()
 		while new_box.iou(box) > iou:
