@@ -132,7 +132,7 @@ class FastRCNNDetector(object):
 
 		return train_loss[train_loss > 0], test_loss[test_loss > 0]
 
-	def detect(self, im, proposals=None):
+	def detect(self, im, proposals=None, thresh=.7):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
