@@ -110,12 +110,13 @@ class FastRCNNDetector(object):
 
 				train_gen, train_gen_backup = tee(train_gen)
 				test_gen, test_gen_backup = tee(test_gen)
-
+				
+				ti = time.time()
 				for Xbatch, ybatch in train_gen:
 					err = train_fn(Xbatch, ybatch)
 					train_loss_batch.append(err)
 					print_obj.println('Batch error: %.4f' % err)
-
+				
 				for Xbatch, ybatch in test_gen:
 					test_loss_batch.append(test_fn(Xbatch, ybatch))
 
@@ -126,6 +127,7 @@ class FastRCNNDetector(object):
 
 				print_obj.println('\nEpoch %d\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
 					(epoch, train_loss[epoch], test_loss[epoch]))
+				print_obj.println('Epoch took %.3f seconds.' % (time.time() - ti,))
 				time.sleep(.05)
 		except KeyboardInterrupt:
 			pass
@@ -143,10 +145,10 @@ class FastRCNNDetector(object):
 			im = im.astype(theano.config.floatX)
 
 		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_fn = theano.function([self.input], [self.detect_test, self.localize_test])
+			self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
 			self._trained = False
 
-		swap = lambda im: im.reshape(im.shape + (1,)).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX)
+		swap = lambda im: im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX)
 
 		if proposals is not None:
 			ims = np.zeros((proposals.shape[0],3) + self.input_shape, dtype=theano.config.floatX)
@@ -163,8 +165,9 @@ class FastRCNNDetector(object):
 					subim = box.subimage(im)
 					if np.prod(im.shape) > 0:
 						subim = resize(subim, self.input_shape)
-						ims[count] = subim
+						ims[cnt] = swap(subim)
 						regions.append(box)
+						cnt += 1
 
 			class_score, coord = self._detect_fn(ims)
 			class_idx = np.argmax(class_score, axis=1)
