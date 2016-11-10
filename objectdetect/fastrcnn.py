@@ -219,7 +219,7 @@ class FastRCNNDetector(object):
 
 		swap_axes = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 
-		for i in range(0,annotations.__len__(),2):
+		for i in range(0,annotations.__len__(),per_batch):
 			X, y = np.zeros((num_rios * per_batch, 3) + new_size), np.zeros((num_rios * per_batch, 4 + (num_classes + 1)))
 			cnt = 0
 			for j in range(min(per_batch, annotations.__len__() - i)):
