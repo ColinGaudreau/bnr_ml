@@ -22,4 +22,5 @@ data/*
 # pickle files (i.e. data files)
 *.pkl
 
+# ignore json files
 *.json

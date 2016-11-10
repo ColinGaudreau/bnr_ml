@@ -1,4 +1,4 @@
-tmport theano
+import theano
 from theano import tensor as T
 
 import numpy as np
@@ -53,8 +53,8 @@ class FastRCNNDetector(object):
 		self.params = params
 
 		# define normalization factor
-		self.gamma = theano.shared(np.zeros(4, dtype=theano.config.floatX), name='gamma', borrow=True)
-		self.beta = theano.shared(np.ones(4, dtype=theano.config.floatX), name='beta', borrow=True)
+		self.gamma = theano.shared(np.zeros((4,), dtype=theano.config.floatX), name='gamma', borrow=True)
+		self.beta = theano.shared(np.ones((4,), dtype=theano.config.floatX), name='beta', borrow=True)
 
 		self.params.extend([self.gamma, self.beta])
 
@@ -66,12 +66,11 @@ class FastRCNNDetector(object):
 		detection_output: NxK
 		localization_output: NxKx4
 		'''
-
 		# normalize input
 		mu, var = T.mean(target[:,:4], axis=0), T.var(target[:,:4], axis=0)
 		target = T.set_subtensor(
 			target[:,:4], 
-			((target[:,:4] - mu.dimshuffle('x',0)) / T.sqrt(var.dimshuffle('x',0) + eps.dimshuffle('x',0))) * self.gamma.dimshuffle('x',0) + self.beta.dimshuffle('x',0)
+			((target[:,:4] - mu.dimshuffle('x',0)) / T.sqrt(var.dimshuffle('x',0) + eps)) * self.gamma.dimshuffle('x',0) + self.beta.dimshuffle('x',0)
 		)
 
 		class_idx = target[:,-(self.num_classes + 1):].argmax(axis=1)
@@ -80,7 +79,7 @@ class FastRCNNDetector(object):
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-		pdb.set_trace()
+		
 		return T.mean(cost)
 
 	def train(
@@ -238,13 +237,13 @@ class FastRCNNDetector(object):
 				for k in range(num_rios):
 					coord, label = np.zeros(4), np.zeros(num_classes + 1)
 					obj = annotation[int(annotation.__len__() * np.random.rand())]
-					to_be_localized = np.random.rand() < .25
+					to_be_localized = np.random.rand() < .5
 
 					if to_be_localized:
-						iou = 0.5 + 0.5 *np.random.rand()
+						iou = 0.7 + 0.3 * np.random.rand()
 						label[obj['label']] = 1.
 					else:
-						iou = 0.1 + 0.4 * np.random.rand()
+						iou = 0.1 + 0.2 * np.random.rand()
 						label[num_classes] = 1.
 					obj_box = BoundingBox(
 						obj['x'],
@@ -260,6 +259,7 @@ class FastRCNNDetector(object):
 							coord[2] = 100 * np.log(obj_box.w / new_box.w)
 							coord[3] = 100 * np.log(obj_box.h / new_box.h)
 						new_im = new_box.subimage(im)
+						pdb.set_trace()
 						if np.prod(new_im.shape) > 0:
 							X[cnt] = swap_axes(resize(new_im, new_size))
 							y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
