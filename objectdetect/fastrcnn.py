@@ -223,7 +223,8 @@ class FastRCNNDetector(object):
 			cnt = 0
 			for j in range(min(per_batch, annotations.__len__() - i)):
 				annotation = annotations[i+j]
-				im = imread(annotation[0]['image'])
+				objs = annotation['annotations']
+				im = imread(annotation['image'])
 
 				if im.shape.__len__() == 2:
 					im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
@@ -236,7 +237,7 @@ class FastRCNNDetector(object):
 
 				for k in range(num_rios):
 					coord, label = np.zeros(4), np.zeros(num_classes + 1)
-					obj = annotation[int(annotation.__len__() * np.random.rand())]
+					obj = objs[int(objs.__len__() * np.random.rand())]
 					to_be_localized = np.random.rand() < .5
 
 					if to_be_localized:
