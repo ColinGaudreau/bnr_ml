@@ -35,6 +35,11 @@ class BoundingBox(object):
 			return isec.size / union
 		else:
 			return 0.
+	def overlap(self, box):
+		if self.size > 0:
+			return self.intersection(box).size / self.size
+		else:
+			return 0.
 	def intersection(self, box):
 		new_xi = max(self.xi, box.xi)
 		new_yi = max(self.yi, box.yi)
@@ -85,12 +90,11 @@ class BoundingBox(object):
 		return BoundingBox(self.xi - shift[0], self.yi - shift[1], self.xf - shift[0], self.yf - shift[1])
 
 	@staticmethod
-	def gen_randombox(iou, box, eps=.9):
-		angle = 2 * np.pi * np.random.rand()
+	def gen_randombox(overlap, box, eps=.9):
 		vec = np.random.randn(4)
 		vec /= np.sqrt(np.sum(vec**2))
 		new_box = box.copy()
-		while new_box.iou(box) > iou:
+		while box.overlap(new_box) > overlap:
 			new_box.xi += vec[0]
 			new_box.yi += vec[1]
 			new_box.xf += vec[2]
