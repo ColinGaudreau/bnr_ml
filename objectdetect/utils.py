@@ -146,11 +146,12 @@ def draw_coord(im, coords, label_map=None):
 
 	draw = ImageDraw.Draw(im)
 		
-	def draw_rects(draw, size, coords, color=(255, 0, 0)):
+	def draw_rects(draw, size, coords, color=(255, 255, 255)):
 		for i in range(coords.shape[0]):
 			coord = coords[i, :4]
 			coord[[0,2]] *= size[1]
 			coord[[1,3]] *= size[0]
+			coord[[2,3]] += coord[[0,1]]
 			coord = np.int_(coord).tolist()
 			draw.rectangle(coord, outline=color)
 
@@ -160,13 +161,14 @@ def draw_coord(im, coords, label_map=None):
 			class_idx = coords[:,-1] == cls
 			class_coords = coords[class_idx]
 			color = tuple(np.int_(255 * np.random.rand(3,))) # color for class
+			draw_rects(draw, im.size, class_coords, color=color)
 			for i in range(class_coords.shape[0]):
 				coord = class_coords[i]
-				draw_rects(draw, im.size, class_coords, color)
 				text = 'confidence: %.2f' % class_coords[i, -2]
 				if label_map is not None:
 					text = '%s, %s' % (label_map(class_coords[i,-1]), text)
-				draw.text([coord[0], coord[1] - 10], text, fill=color)
+				draw.text(coord[:2].tolist(), text, fill=color)
+		return im
 	else:
 		draw_rects(draw, im.size, coords)
 		return im

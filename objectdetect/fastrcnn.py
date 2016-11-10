@@ -1,4 +1,4 @@
-import theano
+tmport theano
 from theano import tensor as T
 
 import numpy as np
@@ -60,14 +60,13 @@ class FastRCNNDetector(object):
 		detection_output: NxK
 		localization_output: NxKx4
 		'''
-
 		class_idx = target[:,-(self.num_classes + 1):].argmax(axis=1)
 		mask = T.ones((target.shape[0], 1))
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-		
+		pdb.set_trace()
 		return T.mean(cost)
 
 	def train(
@@ -92,7 +91,7 @@ class FastRCNNDetector(object):
 			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 
 		updates = rmsprop(cost, self.params, learning_rate=lr)
-
+		
 		print_obj.println('Compiling...')
 		ti = time.time(); time.sleep(.1)
 		train_fn = theano.function([self.input, target], cost, updates=updates)
@@ -170,7 +169,7 @@ class FastRCNNDetector(object):
 						cnt += 1
 			region = np.asarray(regions)
 			class_score, coord = self._detect_fn(ims[:cnt])
-			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score, axis=1) > thresh
+			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
 			coord = coord[np.arange(coord.shape[0]), class_idx]
 			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
 			class_score, coord = class_score[obj_idx], coord[obj_idx]
@@ -244,8 +243,8 @@ class FastRCNNDetector(object):
 						if to_be_localized:
 							coord[0] = (obj_box.xi - new_box.xi) / (new_box.w)
 							coord[1] = (obj_box.yi - new_box.yi) / (new_box.h)
-							coord[2] = np.log(obj_box.w / new_box.w)
-							coord[3] = np.log(obj_box.h / new_box.h)
+							coord[2] = 100 * np.log(obj_box.w / new_box.w)
+							coord[3] = 100 * np.log(obj_box.h / new_box.h)
 						new_im = new_box.subimage(im)
 						if np.prod(new_im.shape) > 0:
 							X[cnt] = swap_axes(resize(new_im, new_size))
