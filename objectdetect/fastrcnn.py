@@ -19,6 +19,7 @@ from copy import deepcopy
 from itertools import tee
 import time
 import pdb
+from tqdm import tqdm
 
 class FastRCNNDetector(object):
 	'''
@@ -79,7 +80,7 @@ class FastRCNNDetector(object):
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-		
+		pdb.set_trace()
 		return T.mean(cost)
 
 	def train(
@@ -448,6 +449,7 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 	'''
 	'''
 	imsize = None
+	np.random.shuffle(annotations)
 	for i in tqdm(range(0,annotations.__len__(),2)):
 		X,y = None, None
 		for i in range(min(annotations.__len__() - i, 2)):
@@ -497,7 +499,7 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 			else:
 				X = np.concatenate((X,Xim), axis=0)
 				y = np.concatenate((y,yim), axis=0)
-		yield X, y
+		yield X.astype(dtype), y.astype(dtype)
 
 
 
