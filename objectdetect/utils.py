@@ -94,7 +94,7 @@ class BoundingBox(object):
 		vec = np.random.randn(4)
 		vec /= np.sqrt(np.sum(vec**2))
 		new_box = box.copy()
-		while box.overlap(new_box) > overlap:
+		while box.iou(new_box) > overlap:
 			new_box.xi += vec[0]
 			new_box.yi += vec[1]
 			new_box.xf += vec[2]
