@@ -214,7 +214,6 @@ class FastRCNNDetector(object):
 			num_rios=50,
 			min_overlap=.5
 		):
-		annotations = [[deepcopy(o) for o in obj] for obj in annotations]
 
 		swap_axes = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 
@@ -223,7 +222,7 @@ class FastRCNNDetector(object):
 			cnt = 0
 			for j in range(min(per_batch, annotations.__len__() - i)):
 				annotation = annotations[i+j]
-				objs = annotation['annotations']
+				objs = [deepcopy(o) for o in annotation['annotations']]
 				im = imread(annotation['image'])
 
 				if im.shape.__len__() == 2:
@@ -260,7 +259,6 @@ class FastRCNNDetector(object):
 							coord[2] = 100 * np.log(obj_box.w / new_box.w)
 							coord[3] = 100 * np.log(obj_box.h / new_box.h)
 						new_im = new_box.subimage(im)
-						pdb.set_trace()
 						if np.prod(new_im.shape) > 0:
 							X[cnt] = swap_axes(resize(new_im, new_size))
 							y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
