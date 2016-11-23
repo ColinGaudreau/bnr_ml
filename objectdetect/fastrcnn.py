@@ -53,12 +53,6 @@ class FastRCNNDetector(object):
 				params.append(param)
 		self.params = params
 
-		# define normalization factor
-		self.gamma = theano.shared(np.zeros((4,), dtype=theano.config.floatX), name='gamma', borrow=True)
-		self.beta = theano.shared(np.ones((4,), dtype=theano.config.floatX), name='beta', borrow=True)
-
-		self.params.extend([self.gamma, self.beta])
-
 		# for detection
 		self._trained = False
 
@@ -67,20 +61,13 @@ class FastRCNNDetector(object):
 		detection_output: NxK
 		localization_output: NxKx4
 		'''
-		# normalize input
-		mu, var = T.mean(target[:,:4], axis=0), T.var(target[:,:4], axis=0)
-		target = T.set_subtensor(
-			target[:,:4], 
-			((target[:,:4] - mu.dimshuffle('x',0)) / T.sqrt(var.dimshuffle('x',0) + eps)) * self.gamma.dimshuffle('x',0) + self.beta.dimshuffle('x',0)
-		)
-
 		class_idx = target[:,-(self.num_classes + 1):].argmax(axis=1)
 		mask = T.ones((target.shape[0], 1))
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-		pdb.set_trace()
+
 		return T.mean(cost)
 
 	def train(
