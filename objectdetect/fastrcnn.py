@@ -67,7 +67,7 @@ class FastRCNNDetector(object):
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-
+		pdb.set_trace()
 		return T.mean(cost)
 
 	def train(
@@ -95,8 +95,8 @@ class FastRCNNDetector(object):
 		
 		print_obj.println('Compiling...')
 		ti = time.time(); time.sleep(.1)
-		train_fn = theano.function([self.input, target], cost, updates=updates)
-		test_fn = theano.function([self.input, target], cost_test)
+		self._train_fn = theano.function([self.input, target], cost, updates=updates)
+		self._test_fn = theano.function([self.input, target], cost_test)
 		print_obj.println('Compiling took %.3f seconds' % (time.time() - ti,))
 
 		train_loss, test_loss = np.zeros(epochs), np.zeros(epochs)
@@ -113,12 +113,12 @@ class FastRCNNDetector(object):
 				
 				ti = time.time()
 				for Xbatch, ybatch in train_gen:
-					err = train_fn(Xbatch, ybatch)
+					err = self._train_fn(Xbatch, ybatch)
 					train_loss_batch.append(err)
 					print_obj.println('Batch error: %.4f' % err)
 				
 				for Xbatch, ybatch in test_gen:
-					test_loss_batch.append(test_fn(Xbatch, ybatch))
+					test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
 				train_loss[epoch] = np.mean(train_loss_batch)
 				test_loss[epoch] = np.mean(test_loss_batch)
@@ -486,7 +486,10 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 			else:
 				X = np.concatenate((X,Xim), axis=0)
 				y = np.concatenate((y,yim), axis=0)
-		yield X.astype(dtype), y.astype(dtype)
+		idx = np.arange(X.shape[0])
+		np.random.shuffle(idx)
+		pdb.set_trace()
+		yield X[idx].astype(dtype), y[idx].astype(dtype)
 
 
 
