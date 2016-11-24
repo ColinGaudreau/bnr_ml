@@ -488,37 +488,3 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 				y = np.concatenate((y,yim), axis=0)
 		yield X.astype(dtype), y.astype(dtype)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
