@@ -67,7 +67,7 @@ class FastRCNNDetector(object):
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
-		pdb.set_trace()
+		
 		return T.mean(cost)
 
 	def train(
@@ -95,8 +95,8 @@ class FastRCNNDetector(object):
 
 		print_obj.println('Getting cost...')
 		cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
-		if test_gen is not None:
-			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
+		
+		cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 
 		updates = rmsprop(cost, self.params, learning_rate=lr)
 		
@@ -292,9 +292,9 @@ def _generate_boxes_from_obj(obj, imsize, num_pos=20, num_scale=20, mult=2):
 	boxes[:,0] = np.maximum(0., np.minimum(imsize[1], boxes[:,0]))
 	boxes[:,1] = np.maximum(0., np.minimum(imsize[0], boxes[:,1]))
 	idx = boxes[:,0] + boxes[:,2] > imsize[1]
-	boxes[idx,2] = imsize[1]
+	boxes[idx,2] = imsize[1] - boxes[idx,0]
 	idx = boxes[:,1] + boxes[:,3] > imsize[0]
-	boxes[idx,3] = imsize[0]
+	boxes[idx,3] = imsize[0] - boxes[idx,1]
 
 	return boxes
 
@@ -446,8 +446,8 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 	np.random.shuffle(annotations)
 	for i in tqdm(range(0,annotations.__len__(),2)):
 		X,y = None, None
-		for i in range(min(annotations.__len__() - i, 2)):
-			annotation = annotations[i]
+		for j in range(min(annotations.__len__() - i, 2)):
+			annotation = annotations[i + j]
 	#		 if imsize is not None:
 	#			 boxes[:,[0,2]] /= imsize[1]
 	#			 boxes[:,[1,3]] /= imsize[0] 
@@ -495,6 +495,6 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 				y = np.concatenate((y,yim), axis=0)
 		idx = np.arange(X.shape[0])
 		np.random.shuffle(idx)
-		pdb.set_trace()
+		
 		yield X[idx].astype(dtype), y[idx].astype(dtype)
 
