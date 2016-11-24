@@ -72,10 +72,17 @@ class FastRCNNDetector(object):
 
 	def train(
 			self,
-			train_gen,
-			test_gen,
+			train_annotations,
+			test_annotations,
+			lab2num,
 			print_obj,
 			updates=rmsprop,
+			num_batch=2,
+			N=20,
+			neg=.5,
+			num_batch_test=5,
+			N_test=10,
+			neg_test=.5,
 			epochs=10,
 			lr=1e-4,
 			momentum=0.9,
@@ -108,22 +115,22 @@ class FastRCNNDetector(object):
 				train_loss_batch = []
 				test_loss_batch = []
 
-				train_gen, train_gen_backup = tee(train_gen)
-				test_gen, test_gen_backup = tee(test_gen)
+				# train_gen, train_gen_backup = tee(train_gen)
+				# test_gen, test_gen_backup = tee(test_gen)
 				
 				ti = time.time()
-				for Xbatch, ybatch in train_gen:
+				for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch, N=N, neg=neg):
 					err = self._train_fn(Xbatch, ybatch)
 					train_loss_batch.append(err)
 					print_obj.println('Batch error: %.4f' % err)
 				
-				for Xbatch, ybatch in test_gen:
+				for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch_test, N=N_test, neg=neg_test):
 					test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
 				train_loss[epoch] = np.mean(train_loss_batch)
 				test_loss[epoch] = np.mean(test_loss_batch)
 
-				train_gen, test_gen = train_gen_backup, test_gen_backup
+				# train_gen, test_gen = train_gen_backup, test_gen_backup
 
 				print_obj.println('\nEpoch %d\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
 					(epoch, train_loss[epoch], test_loss[epoch]))
