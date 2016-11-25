@@ -463,7 +463,7 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 			objs = annotation['annotations']
 			new_objs = []
 
-			boxes = _generate_boxes(objs, imsize, num_pos=20, num_scale=10, mult=2)
+			boxes = _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2)
 	#		 boxes = _gen_boxes(imsize, num_pos=20, num_scale=20)
 
 			neg_examples, pos_examples = _find_valid_boxes(
