@@ -398,9 +398,12 @@ def _find_valid_boxes(
 		big_enough_idx
 	)
 
-	pos_examples = np.concatenate((boxes[:,:,0], max_iou_idx.reshape((-1,1))), axis=1)
-	pos_examples = pos_examples[np.random.choice(idx[valid_example_idx], size=pos_rois, replace=False)]
-	return neg_examples, pos_examples
+	if valid_example_idx.nonzero()[0].size > 0:
+		pos_examples = np.concatenate((boxes[:,:,0], max_iou_idx.reshape((-1,1))), axis=1)
+		pos_examples = pos_examples[np.random.choice(idx[valid_example_idx], size=pos_rois, replace=False)]
+		return neg_examples, pos_examples
+	else:
+		return None, None
 
 def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano.config.floatX):
 	imsize = annotation['size']
@@ -448,23 +451,15 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 		X,y = None, None
 		for j in range(min(annotations.__len__() - i, 2)):
 			annotation = annotations[i + j]
-	#		 if imsize is not None:
-	#			 boxes[:,[0,2]] /= imsize[1]
-	#			 boxes[:,[1,3]] /= imsize[0] 
-
 			new_annotation = {}
 			new_annotation['image'] = annotation['image']
 			new_annotation['size'] = annotation['size']
 			imsize = annotation['size']
 
-	#		 boxes[:,[0,2]] *= imsize[1]
-	#		 boxes[:,[1,3]] *= imsize[0]
-
 			objs = annotation['annotations']
 			new_objs = []
 
 			boxes = _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2)
-	#		 boxes = _gen_boxes(imsize, num_pos=20, num_scale=20)
 
 			neg_examples, pos_examples = _find_valid_boxes(
 				objs,
@@ -475,26 +470,28 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 				min_obj_size=min_obj_size
 			)
 
-			new_objs.extend(_boxes_as_annotations(neg_examples))
-			for i in range(objs.__len__()):
-				idx = np.equal(pos_examples[:,-1], i)
-				if idx.nonzero() > 0:
-					new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[i]))
-			new_annotation['annotations'] = new_objs
+			if neg_examples is not None:
+				new_objs.extend(_boxes_as_annotations(neg_examples))
+				for i in range(objs.__len__()):
+					idx = np.equal(pos_examples[:,-1], i)
+					if idx.nonzero() > 0:
+						new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[i]))
+				new_annotation['annotations'] = new_objs
 
-			Xim, yim = _data_from_annotation(
-				new_annotation,
-				size,
-				num_classes,
-				label2num
-			)
-			if X is None:
-				X,y = Xim, yim
-			else:
-				X = np.concatenate((X,Xim), axis=0)
-				y = np.concatenate((y,yim), axis=0)
-		idx = np.arange(X.shape[0])
-		np.random.shuffle(idx)
-		
-		yield X[idx].astype(dtype), y[idx].astype(dtype)
+				Xim, yim = _data_from_annotation(
+					new_annotation,
+					size,
+					num_classes,
+					label2num
+				)
+				if X is None:
+					X,y = Xim, yim
+				else:
+					X = np.concatenate((X,Xim), axis=0)
+					y = np.concatenate((y,yim), axis=0)
+
+		if X is not None:
+			idx = np.arange(X.shape[0])
+			np.random.shuffle(idx)
+			yield X[idx].astype(dtype), y[idx].astype(dtype)
 
