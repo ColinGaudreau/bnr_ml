@@ -66,7 +66,8 @@ class FastRCNNDetector(object):
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 
 		cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
-		cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
+		if lmbda > 0:
+			cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
 		
 		return T.mean(cost)
 
@@ -98,7 +99,11 @@ class FastRCNNDetector(object):
 		
 		cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 
-		updates = rmsprop(cost, self.params, learning_rate=lr)
+		if lmbda == 0:
+			params = self.params[:-2]
+		else:
+			params = self.params
+		updates = rmsprop(cost, params, learning_rate=lr)
 		
 		print_obj.println('Compiling...')
 		ti = time.time(); time.sleep(.1)
@@ -447,9 +452,9 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 	'''
 	imsize = None
 	np.random.shuffle(annotations)
-	for i in tqdm(range(0,annotations.__len__(),2)):
+	for i in tqdm(range(0,annotations.__len__(),num_batch)):
 		X,y = None, None
-		for j in range(min(annotations.__len__() - i, 2)):
+		for j in range(min(annotations.__len__() - i, num_batch)):
 			annotation = annotations[i + j]
 			new_annotation = {}
 			new_annotation['image'] = annotation['image']
