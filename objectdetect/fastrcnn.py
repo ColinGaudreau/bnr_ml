@@ -180,12 +180,13 @@ class FastRCNNDetector(object):
 						ims[cnt] = swap(subim)
 						regions.append(box)
 						cnt += 1
-			region = np.asarray(regions)
+			regions = np.asarray(regions)
 			class_score, coord = self._detect_fn(ims[:cnt])
 			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
 			coord = coord[np.arange(coord.shape[0]), class_idx]
 			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
-			class_score, coord = class_score[obj_idx], coord[obj_idx]
+			class_score, coord, regions = class_score[obj_idx], coord[obj_idx], regions[obj_idx]
+			
 			for i in range(coord.shape[0]):
 				coord[i,[0,2]] *= regions[i].w
 				coord[i,[1,3]] *= regions[i].h
@@ -193,6 +194,7 @@ class FastRCNNDetector(object):
 				coord[i,1] += regions[i].yi
 				coord[i,[0,2]] /= im.shape[1]
 				coord[i,[1,3]] /= im.shape[0]
+			
 			return class_score, coord
 		else:
 			im = resize(im, self.input_shape + (3,))
@@ -438,7 +440,7 @@ def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano
 		if obj['label'] != 'nothing':
 			x,y,w,h = obj['x'], obj['y'], obj['w'], obj['h']
 			xscale, yscale = 1. / wim, 1. / him
-			x, y, w, h = x * xscale, y * yscale, w * xscale, h * yscale
+			x, y, w, h = x * xscale, y * yscale, np.log(w * xscale), np.log(h * yscale)
 			gtruth[:4] = [x, y, w, h]
 		labels[i] = gtruth
 		X[i] = subim.reshape((1,) + subim.shape).swapaxes(3,2).swapaxes(2,1)

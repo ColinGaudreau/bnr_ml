@@ -153,8 +153,8 @@ def draw_coord(im, coords, label_map=None):
 	def draw_rects(draw, size, coords, color=(255, 255, 255)):
 		for i in range(coords.shape[0]):
 			coord = coords[i, :4]
-			coord[[0,2]] *= size[1]
-			coord[[1,3]] *= size[0]
+			coord[[0,2]] *= size[0]
+			coord[[1,3]] *= size[1]
 			coord[[2,3]] += coord[[0,1]]
 			coord = np.int_(coord).tolist()
 			draw.rectangle(coord, outline=color)
