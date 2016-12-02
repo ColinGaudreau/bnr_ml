@@ -267,8 +267,10 @@ class YoloObjectDetector(object):
 
 	def train(
 			self,
-			train_gen,
-			test_gen,
+			gen_fn,
+			train_annotations,
+			test_annotations,
+			bath_size=10,
 			epochs=10,
 			lr=1e-4,
 			momentum=0.9,
@@ -326,13 +328,13 @@ class YoloObjectDetector(object):
 				train_gen, train_gen_backup = tee(train_gen)
 				test_gen, test_gen_backup = tee(test_gen)
 
-				for Xbatch, ybatch in train_gen:
+				for Xbatch, ybatch in gen_fn(train_annotations, self.input_shape, batch_size):
 					err = train_fn(Xbatch, ybatch)
 					logfile.write('Batch error: %.4f\n' % err)
 					print(err)
 					train_loss_batch.append(err)
 
-				for Xbatch, ybatch in test_gen:
+				for Xbatch, ybatch in gen_fn(test_annotations, self.input_shape, batch_size):
 					test_loss_batch.append(test_fn(Xbatch, ybatch))
 
 				train_loss[epoch] = np.mean(train_loss_batch)
