@@ -253,6 +253,7 @@ class YoloObjectDetector(object):
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
+		pdb.set_trace()
 		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
 
 	def _get_updates(self, cost, params, lr=1e-4):
@@ -356,7 +357,7 @@ class YoloObjectDetector(object):
 		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
 		scores_flat = scores.flatten()
 		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > thresh]
-
+		pdb.set_trace()
 		preds = []
 		for i in range(above_thresh_idx.size):
 			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
@@ -365,7 +366,8 @@ class YoloObjectDetector(object):
 			pred = np.concatenate((pred, [scores[idx[0],idx[1],idx[2]], np.argmax(output[-C:,idx[1],idx[2]])]))
 			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
 			# adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
-			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5 
+			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5)
+ 
 			pred[[2,3]] = np.exp(adj_wh)
 			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
