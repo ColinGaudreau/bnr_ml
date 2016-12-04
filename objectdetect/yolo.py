@@ -50,7 +50,7 @@ class YoloObjectDetector(object):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
-				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
+				#output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 				pass
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
@@ -248,8 +248,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 		 	lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 		 	lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((safe_sqrt(pred_w) - safe_sqrt(truth_w).dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((safe_sqrt(pred_h) - safe_sqrt(truth_h).dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_w - truth_w.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((pred_h - truth_h.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
@@ -363,10 +363,10 @@ class YoloObjectDetector(object):
 			pred = np.copy(output[idx[0]:idx[0] + 4, idx[1], idx[2]])
 			pred[0], pred[1] = pred[0] + np.float_(idx[2])/S[1], pred[1] + np.float_(idx[1])/S[0]
 			pred = np.concatenate((pred, [scores[idx[0],idx[1],idx[2]], np.argmax(output[-C:,idx[1],idx[2]])]))
-			#adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
-			#adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
+			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
+			# adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
 			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5 
-			#pred[[2,3]] = adj_wh
+			pred[[2,3]] = np.exp(adj_wh)
 			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
 		preds = np.asarray(preds)
