@@ -50,7 +50,7 @@ class YoloObjectDetector(object):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
-				#output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 				pass
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
@@ -248,8 +248,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 		 	lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 		 	lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((T.log(pred_w) - truth_w.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((T.log(pred_h) - truth_h.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((T.log(pred_w) - np.log(truth_w.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((T.log(pred_h) - np.log(truth_h.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])

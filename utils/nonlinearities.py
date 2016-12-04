@@ -16,7 +16,7 @@ def smooth_l1(val):
 	cost = T.switch(T.abs_(val)<1, 0.5 * val**2, T.abs_(val) - 0.5)
 	return cost
 
-def smooth_abs(x, x0=.1):
+def smooth_abs(x, x0=.01):
 	a1 = 1 / (2 * x0)
 	a2 = - 1 / (2 * x0)
 	b1 = x0 - a1 * x0**2
