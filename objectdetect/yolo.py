@@ -4,7 +4,7 @@ import numpy as np
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
 from bnr_ml.utils.helpers import meshgrid2D, bitwise_not
-from bnr_ml.utils.nonlinearities import softmax, smooth_l1, safe_sqrt
+from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
 from bnr_ml.objectdetect import utils
 from collections import OrderedDict
 from tqdm import tqdm
@@ -50,7 +50,7 @@ class YoloObjectDetector(object):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
-				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_l1(output[:,5*i + 2:5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
 				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 				pass
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
