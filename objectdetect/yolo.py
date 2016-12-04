@@ -50,8 +50,8 @@ class YoloObjectDetector(object):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
-				#output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 2:5*i + 4,:,:]))
-				#output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_l1(output[:,5*i + 2:5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 				pass
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
 			return output
@@ -168,7 +168,7 @@ class YoloObjectDetector(object):
 		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
 		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
 		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3), output[:,h_idx].dimshuffle(0,'x',1,2,3)
-		pred_w, pred_h = smooth_l1(pred_w), smooth_l1(pred_h)		
+		#pred_w, pred_h = smooth_l1(pred_w), smooth_l1(pred_h)		
 		pred_conf = output[:,conf_idx].dimshuffle(0,'x',1,2,3)
 		pred_class = output[:,-C:].dimshuffle(0,'x',1,2,3)
 		
@@ -270,7 +270,7 @@ class YoloObjectDetector(object):
 			gen_fn,
 			train_annotations,
 			test_annotations,
-			bath_size=10,
+			batch_size=10,
 			epochs=10,
 			lr=1e-4,
 			momentum=0.9,
@@ -325,23 +325,23 @@ class YoloObjectDetector(object):
 				train_loss_batch = []
 				test_loss_batch = []
 
-				train_gen, train_gen_backup = tee(train_gen)
-				test_gen, test_gen_backup = tee(test_gen)
+				#train_gen, train_gen_backup = tee(train_gen)
+				#test_gen, test_gen_backup = tee(test_gen)
 
-				for Xbatch, ybatch in gen_fn(train_annotations, self.input_shape, batch_size):
+				for Xbatch, ybatch in gen_fn(train_annotations, self.input_shape[2:], batch_size):
 					err = train_fn(Xbatch, ybatch)
 					logfile.write('Batch error: %.4f\n' % err)
 					print(err)
 					train_loss_batch.append(err)
 
-				for Xbatch, ybatch in gen_fn(test_annotations, self.input_shape, batch_size):
+				for Xbatch, ybatch in gen_fn(test_annotations, self.input_shape[2:], batch_size):
 					test_loss_batch.append(test_fn(Xbatch, ybatch))
 
 				train_loss[epoch] = np.mean(train_loss_batch)
 				test_loss[epoch] = np.mean(test_loss_batch)
 
-				train_gen = train_gen_backup
-				test_gen = test_gen_backup
+				#train_gen = train_gen_backup
+				#test_gen = test_gen_backup
 				
 				logfile.write('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (epoch, train_loss[epoch], test_loss[epoch]))
 				print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)
@@ -364,10 +364,10 @@ class YoloObjectDetector(object):
 			pred = np.copy(output[idx[0]:idx[0] + 4, idx[1], idx[2]])
 			pred[0], pred[1] = pred[0] + np.float_(idx[2])/S[1], pred[1] + np.float_(idx[1])/S[0]
 			pred = np.concatenate((pred, [scores[idx[0],idx[1],idx[2]], np.argmax(output[-C:,idx[1],idx[2]])]))
-			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
-			adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
-			adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5
-			pred[[2,3]] = adj_wh
+			#adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
+			#adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
+			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5 
+			#pred[[2,3]] = adj_wh
 			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
 		preds = np.asarray(preds)
@@ -380,19 +380,8 @@ class YoloObjectDetector(object):
 			idx = preds[:,-1] == cls
 			cls_preds = preds[idx]
 			cls_preds = utils.nms(cls_preds, overlap)
+			if cls_preds.shape[0] > 0:
+				cls_preds[:,[2,3]] -= cls_preds[:,[0,1]]
 			nms_preds = np.concatenate((nms_preds, cls_preds), axis=0)
 		return nms_preds
-
-
-
-
-
-
-
-
-
-
-
-
-
 
