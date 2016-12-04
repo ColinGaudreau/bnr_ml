@@ -16,7 +16,7 @@ def smooth_l1(val):
 	cost = T.switch(T.abs_(val)<1, 0.5 * val**2, T.abs_(val) - 0.5)
 	return cost
 
-def smooth_abs(val, x0=.1):
+def smooth_abs(x, x0=.1):
 	a1 = 1 / (2 * x0)
 	a2 = - 1 / (2 * x0)
 	b1 = x0 - a1 * x0**2
@@ -25,5 +25,5 @@ def smooth_abs(val, x0=.1):
 	val = T.switch(idx1, -x - b2, T.switch(idx2, a1 * x**2, x - b1))
 	return val
 
-def safe_sqrt(val, eps=1e-3):
+def safe_sqrt(val, eps=1e-6):
 	return T.sqrt(val + eps)

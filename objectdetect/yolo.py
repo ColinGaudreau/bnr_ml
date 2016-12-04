@@ -253,7 +253,6 @@ class YoloObjectDetector(object):
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
-			
 		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
 
 	def _get_updates(self, cost, params, lr=1e-4):
