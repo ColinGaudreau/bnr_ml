@@ -168,7 +168,7 @@ class YoloObjectDetector(object):
 		pred_x = (output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
 		pred_y = (output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)).dimshuffle(0,'x',1,2,3)
 		pred_w, pred_h = output[:,w_idx].dimshuffle(0,'x',1,2,3), output[:,h_idx].dimshuffle(0,'x',1,2,3)
-		pred_w, pred_h = T.exp(pred_w), T.exp(pred_h)		
+		#pred_w, pred_h = T.exp(pred_w), T.exp(pred_h)		
 		pred_conf = output[:,conf_idx].dimshuffle(0,'x',1,2,3)
 		pred_class = output[:,-C:].dimshuffle(0,'x',1,2,3)
 		
@@ -248,8 +248,8 @@ class YoloObjectDetector(object):
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 		 	lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
 		 	lmbda_coord * T.sum((pred_y - truth_y.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((T.log(pred_w) - np.log(truth_w.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((T.log(pred_h) - np.log(truth_h.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((safe_sqrt(pred_w) - safe_sqrt(truth_w.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
+			lmbda_coord * T.sum((safe_sqrt(pred_h) - safe_sqrt(truth_h.dimshuffle(0,1,'x','x','x')))[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
@@ -364,11 +364,10 @@ class YoloObjectDetector(object):
 			pred = np.copy(output[idx[0]:idx[0] + 4, idx[1], idx[2]])
 			pred[0], pred[1] = pred[0] + np.float_(idx[2])/S[1], pred[1] + np.float_(idx[1])/S[0]
 			pred = np.concatenate((pred, [scores[idx[0],idx[1],idx[2]], np.argmax(output[-C:,idx[1],idx[2]])]))
-			adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
+			#adj_wh = pred[[2,3]]  # adjust width and height since training adds an extra factor
 			# adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
 			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5)
- 
-			pred[[2,3]] = np.exp(adj_wh)
+			#pred[[2,3]] = np.exp(adj_wh)
 			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
 		preds = np.asarray(preds)
