@@ -231,9 +231,10 @@ class YoloObjectDetector(object):
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
 		cell_intersects = (iou_cell >= 0.)
 			
-		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(cell_intersects, box_is_resp), obj_for_cell)
+		tmp = T.ones_like(cell_intersects)
+		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(tmp, box_is_resp), obj_for_cell)
 		conf_is_zero = T.bitwise_and(
-			bitwise_not(T.bitwise_and(cell_intersects, box_is_resp)),
+			bitwise_not(T.bitwise_and(tmp, box_is_resp)),
 			obj_for_cell
 		)
 		conf_is_zero = conf_is_zero.sum(axis=1, keepdims=True)
