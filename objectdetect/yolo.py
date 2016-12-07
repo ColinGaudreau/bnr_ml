@@ -143,7 +143,7 @@ class YoloObjectDetector(object):
 		
 		return cost / T.maximum(1., truth.shape[0])
 
-	def _get_cost(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-3):
+	def _get_cost(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
 		'''
 		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
@@ -229,12 +229,11 @@ class YoloObjectDetector(object):
 		obj_for_cell = T.eq(maxval_idx, iou_cell.argmax(axis=1).dimshuffle(0,'x',1,2,3))
 			
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
-		cell_intersects = (iou_cell >= 0.)
-			
-		tmp = T.ones_like(cell_intersects)
-		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(tmp, box_is_resp), obj_for_cell)
+		cell_intersects = (iou_cell > iou_thresh)
+		
+		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(cell_intersects, box_is_resp), obj_for_cell)
 		conf_is_zero = T.bitwise_and(
-			bitwise_not(T.bitwise_and(tmp, box_is_resp)),
+			bitwise_not(T.bitwise_and(cell_intersects, box_is_resp)),
 			obj_for_cell
 		)
 		conf_is_zero = conf_is_zero.sum(axis=1, keepdims=True)
