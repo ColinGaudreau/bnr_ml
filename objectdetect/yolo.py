@@ -143,7 +143,7 @@ class YoloObjectDetector(object):
 		
 		return cost / T.maximum(1., truth.shape[0])
 
-	def _get_cost(self, output, truth, S, B, C,lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
+	def _get_cost(self, output, truth, S, B, C, rescore=False, lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
 		'''
 		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
@@ -250,6 +250,8 @@ class YoloObjectDetector(object):
 		# repeat the ground truth for class probabilities for each cell.
 		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
 	
+		if not rescore:
+			iou = T.ones_like(iou)
 		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
 			lmbda_noobj * T.sum((pred_conf[conf_is_zero.nonzero()])**2) + \
 		 	lmbda_coord * T.sum((pred_x - truth_x.dimshuffle(0,1,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
@@ -259,7 +261,7 @@ class YoloObjectDetector(object):
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
-		pdb.set_trace()
+		
 		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
 
 	def _get_updates(self, cost, params, lr=1e-4):
@@ -282,6 +284,7 @@ class YoloObjectDetector(object):
 			momentum=0.9,
 			lmbda_coord=5.,
 			lmbda_noobj=0.5,
+			rescore=False,
 			target=None,
 			seed=1991, 
 			logfile='/dev/stdout'
@@ -296,8 +299,8 @@ class YoloObjectDetector(object):
 		logfile.write('Getting cost...\n')
 		print('Getting cost...'); time.sleep(0.1)
 		ti = time.time()
-		cost, constants = self._get_cost(self.output, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test, _ = self._get_cost(self.output_test, target, self.S, self.B, self.num_classes, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost, constants = self._get_cost(self.output, target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
+		cost_test, _ = self._get_cost(self.output_test, target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
 		
 		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
