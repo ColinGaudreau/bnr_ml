@@ -185,7 +185,6 @@ class YoloObjectDetector(object):
 		truth_w, truth_h = truth[:,w_idx], truth[:,h_idx]
 		truth_class = truth[:, class_idx]
 		
-
 		# Get intersection region bounding box coordinates
 		xi = T.maximum(pred_x, truth_x.dimshuffle(0,1,'x','x','x'))
 		xf = T.minimum(pred_x + pred_w, (truth_x + truth_w).dimshuffle(0,1,'x','x','x'))
@@ -198,12 +197,19 @@ class YoloObjectDetector(object):
 		union = (pred_w * pred_h) + (truth_w * truth_h).dimshuffle(0,1,'x','x','x') - isec
 		iou = T.maximum(isec/union, 0.)
 
+		# Calculate rmse for boxes which have 0 iou score
+		squared_error = (pred_x - truth_x.dimshufle(0,1,'x','x','x'))**2 + (pred_y - truth_y.dimshufle(0,1,'x','x','x'))**2 + \
+			(pred_h - truth_h.dimshufle(0,1,'x','x','x'))**2 + (pred_h - truth_h.dimshufle(0,1,'x','x','x'))**2
+
 		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
 		maxval_idx, _ = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
 		maxval_idx = maxval_idx.dimshuffle(0,'x',1,'x','x')
 		maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],3),S[1],4)
 
-		box_is_resp = T.eq(maxval_idx, iou.argmax(axis=2).dimshuffle(0,1,'x',2,3))
+		# determine which box is responsible by giving box with highest iou score (if iou > 0) or smalles squared error.
+		greater_iou = T.eq(maxval_idx, iou.argmax(axis=2).dimshuffle(0,1,'x',2,3))
+		greater_se = T.eq(maxval_idx, squared_error.argmin(axis=2).dimshuffle(0,1,'x',2,3))
+		box_is_resp = T.switch(iou > 0, greater_iou, greater_se)
 
 		# Get matrix for the width/height of each cell
 		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
