@@ -12,7 +12,8 @@ import time
 from PIL import Image, ImageDraw
 
 from lasagne import layers
-from lasagne.updates import rmsprop, sgd
+from lasagne.updates import rmsprop, sgd, adam
+from lasagne.updates import momentum as momentum_update
 
 from itertools import tee
 
@@ -50,8 +51,8 @@ class YoloObjectDetector(object):
 			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
-				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], smooth_abs(output[:,5*i + 2:5*i + 4,:,:]))
-				output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
+				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.abs_(output[:,5*i + 2:5*i + 4,:,:]))
+				#output = T.set_subtensor(output[:,5*i + 4,:,:], T.nnet.sigmoid(output[:,5*i + 4,:,:]))
 				pass
 			output = T.set_subtensor(output[:,-self.num_classes:,:,:], softmax(output[:,-self.num_classes:,:,:], axis=1)) # use safe softmax
 			return output
@@ -198,8 +199,8 @@ class YoloObjectDetector(object):
 		iou = T.maximum(isec/union, 0.)
 
 		# Calculate rmse for boxes which have 0 iou score
-		squared_error = (pred_x - truth_x.dimshufle(0,1,'x','x','x'))**2 + (pred_y - truth_y.dimshufle(0,1,'x','x','x'))**2 + \
-			(pred_h - truth_h.dimshufle(0,1,'x','x','x'))**2 + (pred_h - truth_h.dimshufle(0,1,'x','x','x'))**2
+		squared_error = (pred_x - truth_x.dimshuffle(0,1,'x','x','x'))**2 + (pred_y - truth_y.dimshuffle(0,1,'x','x','x'))**2 + \
+			(pred_h - truth_h.dimshuffle(0,1,'x','x','x'))**2 + (pred_h - truth_h.dimshuffle(0,1,'x','x','x'))**2
 
 		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
 		maxval_idx, _ = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
@@ -208,9 +209,9 @@ class YoloObjectDetector(object):
 
 		# determine which box is responsible by giving box with highest iou score (if iou > 0) or smalles squared error.
 		greater_iou = T.eq(maxval_idx, iou.argmax(axis=2).dimshuffle(0,1,'x',2,3))
-		greater_se = T.eq(maxval_idx, squared_error.argmin(axis=2).dimshuffle(0,1,'x',2,3))
-		box_is_resp = T.switch(iou > 0, greater_iou, greater_se)
-
+		smaller_se = T.eq(maxval_idx, squared_error.argmin(axis=2).dimshuffle(0,1,'x',2,3))
+		box_is_resp = T.switch(iou.max(axis=2, keepdims=True) > 0, greater_iou, smaller_se)
+		
 		# Get matrix for the width/height of each cell
 		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
 		width, height = width.dimshuffle('x','x',0,1), height.dimshuffle('x','x',0,1)
@@ -249,7 +250,8 @@ class YoloObjectDetector(object):
 
 		# repeat the ground truth for class probabilities for each cell.
 		truth_class_rep = T.repeat(T.repeat(truth_class.dimshuffle(0,1,2,'x','x'), S[0], axis=3), S[1], axis=4)
-	
+		cell_intersects = T.repeat(cell_intersects, C, axis=2)
+
 		if not rescore:
 			iou = T.ones_like(iou)
 		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
@@ -261,8 +263,8 @@ class YoloObjectDetector(object):
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
-		
-		return cost, [iou, obj_in_cell_and_resp, conf_is_zero, obj_in_cell_and_resp, cell_intersects]
+		pdb.set_trace()
+		return cost, [iou]
 
 	def _get_updates(self, cost, params, lr=1e-4):
 		lr = T.as_tensor_variable(lr)
@@ -305,10 +307,10 @@ class YoloObjectDetector(object):
 		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
 
-		#updates = momentum_update(cost, self.params, lr=lr, momentum=momentum)
 		grads = T.grad(cost, self.params, consider_constant=constants)
-		updates = rmsprop(grads, self.params, learning_rate=lr)
-		#updates = sgd(grads, self.params, learning_rate=lr)
+		#updates = rmsprop(grads, self.params, learning_rate=lr)
+		updates = adam(grads, self.params, learning_rate=lr)
+		#updates = momentum_update(grads, self.params, lr, momentum)
 		
 		logfile.write('Compiling...\n')
 		print('Compiling...'); time.sleep(0.1)
@@ -366,7 +368,6 @@ class YoloObjectDetector(object):
 		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
 		scores_flat = scores.flatten()
 		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > thresh]
-		pdb.set_trace()
 		preds = []
 		for i in range(above_thresh_idx.size):
 			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
@@ -377,10 +378,10 @@ class YoloObjectDetector(object):
 			# adj_wh[adj_wh < 1] = 0.5 * adj_wh[adj_wh < 1]**2
 			#adj_wh[adj_wh >= 1] = np.abs(adj_wh[adj_wh >= 1]) - 0.5)
 			#pred[[2,3]] = np.exp(adj_wh)
-			pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
+			#pred[[2,3]] += pred[[0,1]] # turn width and height into xf, yf
 			preds.append(pred)
 		preds = np.asarray(preds)
-		
+		return preds
 		if preds.shape[0] == 0:
 			return np.zeros((0,6))
 		
