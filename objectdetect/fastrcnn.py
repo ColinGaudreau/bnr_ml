@@ -21,7 +21,9 @@ import time
 import pdb
 from tqdm import tqdm
 
-class FastRCNNDetector(object):
+from ml_logger.learning_objects import BaseLearningObject
+
+class FastRCNNDetector(object, BaseLearningObject):
 	'''
 		network should have an:
 			input: this is the input layer
@@ -55,6 +57,7 @@ class FastRCNNDetector(object):
 
 		# for detection
 		self._trained = False
+		self._hyperparameters = {}
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1., eps=1e-4):
 		'''
@@ -71,12 +74,27 @@ class FastRCNNDetector(object):
 		
 		return T.mean(cost)
 
+	def get_weights(self):
+		return [p.get_value() for p in in self.params]
+
+	def get_hyperparameters(self):
+		return self._hyperparameters
+
+	def get_architecture(self):
+		architecture = {}
+		for layer in network:
+			architecture[layer] = network[layer].__str__()
+		return architecture
+
+	def load_model(self, weights):
+		return weights
+
 	def train(
 			self,
-			train_annotations,
-			test_annotations,
-			lab2num,
-			print_obj,
+			train_annotations=None,
+			test_annotations=None,
+			label_dict=None,
+			print_obj=None,
 			updates=rmsprop,
 			num_batch=2,
 			N=20,
@@ -84,13 +102,23 @@ class FastRCNNDetector(object):
 			num_batch_test=5,
 			N_test=10,
 			neg_test=.5,
-			epochs=10,
 			lr=1e-4,
 			momentum=0.9,
 			lmbda=1.,
 		):
 		'''
-		'''	
+		'''
+		# set hyperparameters dict
+		self._hyperparameters = {
+			'num_batch': num_batch,
+			'N': N,
+			'neg': neg,
+			'lr': lr,
+			'momentum': momentum,
+			'lambda': lmbda,
+			'update_method': updates.__str__()
+		}
+
 		self._trained = True
 		target = T.matrix('target')
 
@@ -105,46 +133,39 @@ class FastRCNNDetector(object):
 			params = self.params
 		updates = rmsprop(cost, params, learning_rate=lr)
 		
-		print_obj.println('Compiling...')
-		ti = time.time(); time.sleep(.1)
-		self._train_fn = theano.function([self.input, target], cost, updates=updates)
-		self._test_fn = theano.function([self.input, target], cost_test)
-		print_obj.println('Compiling took %.3f seconds' % (time.time() - ti,))
-
-		train_loss, test_loss = np.zeros(epochs), np.zeros(epochs)
+		# check if the training/testing functions have been compiled
+		if hasattr(self, '_train_fn') and self._train_fn is not None:
+			ti = time.time();
+			self._train_fn = theano.function([self.input, target], cost, updates=updates)
+			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
+		if hasattr(self, '_test_fn') and self._test_fn is not None:
+			ti = time.time();
+			self._test_fn = theano.function([self.input, target], cost_test)
+			print_obj.println('Compiling test function took %.3f seconds' % (time.time() - ti,))
 
 		print_obj.println('Beginning training')
 
-		try:
-			for epoch in range(epochs):
-				train_loss_batch = []
-				test_loss_batch = []
+		train_loss_batch = []
+		test_loss_batch = []
+		
+		ti = time.time()
+		for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch, N=N, neg=neg):
+			err = self._train_fn(Xbatch, ybatch)
+			train_loss_batch.append(err)
+			print_obj.println('Batch error: %.4f' % err)
+		
+		for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch_test, N=N_test, neg=neg_test):
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
-				# train_gen, train_gen_backup = tee(train_gen)
-				# test_gen, test_gen_backup = tee(test_gen)
-				
-				ti = time.time()
-				for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch, N=N, neg=neg):
-					err = self._train_fn(Xbatch, ybatch)
-					train_loss_batch.append(err)
-					print_obj.println('Batch error: %.4f' % err)
-				
-				for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch_test, N=N_test, neg=neg_test):
-					test_loss_batch.append(self._test_fn(Xbatch, ybatch))
+		train_loss = np.mean(train_loss_batch)
+		test_loss = np.mean(test_loss_batch)
 
-				train_loss[epoch] = np.mean(train_loss_batch)
-				test_loss[epoch] = np.mean(test_loss_batch)
+		print_obj.println('\nEpoch %d\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
+			(epoch, train_loss, test_loss))
+		print_obj.println('Epoch took %.3f seconds.' % (time.time() - ti,))
+		time.sleep(.01)
 
-				# train_gen, test_gen = train_gen_backup, test_gen_backup
-
-				print_obj.println('\nEpoch %d\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
-					(epoch, train_loss[epoch], test_loss[epoch]))
-				print_obj.println('Epoch took %.3f seconds.' % (time.time() - ti,))
-				time.sleep(.05)
-		except KeyboardInterrupt:
-			pass
-
-		return train_loss[train_loss > 0], test_loss[test_loss > 0]
+		return train_loss, test_loss
 
 	def detect(self, im, proposals=None, thresh=.7):
 		if im.shape.__len__() == 2:
