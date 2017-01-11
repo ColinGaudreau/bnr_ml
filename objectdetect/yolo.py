@@ -210,7 +210,7 @@ class YoloObjectDetector(object):
 		greater_iou = T.eq(maxval_idx, iou.argmax(axis=2).dimshuffle(0,1,'x',2,3))
 		greater_se = T.eq(maxval_idx, squared_error.argmin(axis=2).dimshuffle(0,1,'x',2,3))
 		box_is_resp = T.switch(iou > 0, greater_iou, greater_se)
-
+		
 		# Get matrix for the width/height of each cell
 		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
 		width, height = width.dimshuffle('x','x',0,1), height.dimshuffle('x','x',0,1)
