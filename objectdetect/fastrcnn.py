@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from ml_logger.learning_objects import BaseLearningObject
 
-class FastRCNNDetector(object, BaseLearningObject):
+class FastRCNNDetector(BaseLearningObject):
 	'''
 		network should have an:
 			input: this is the input layer
@@ -75,15 +75,15 @@ class FastRCNNDetector(object, BaseLearningObject):
 		return T.mean(cost)
 
 	def get_weights(self):
-		return [p.get_value() for p in in self.params]
+		return [p.get_value() for p in self.params]
 
 	def get_hyperparameters(self):
 		return self._hyperparameters
 
 	def get_architecture(self):
 		architecture = {}
-		for layer in network:
-			architecture[layer] = network[layer].__str__()
+		for layer in self.network:
+			architecture[layer] = self.network[layer].__str__()
 		return architecture
 
 	def load_model(self, weights):
@@ -105,6 +105,7 @@ class FastRCNNDetector(object, BaseLearningObject):
 			lr=1e-4,
 			momentum=0.9,
 			lmbda=1.,
+			hyperparameters=None,
 		):
 		'''
 		'''
@@ -118,6 +119,8 @@ class FastRCNNDetector(object, BaseLearningObject):
 			'lambda': lmbda,
 			'update_method': updates.__str__()
 		}
+		if hyperparameters is not None:
+			self._hyperparameters.update(hyperparameters)
 
 		self._trained = True
 		target = T.matrix('target')
@@ -134,11 +137,11 @@ class FastRCNNDetector(object, BaseLearningObject):
 		updates = rmsprop(cost, params, learning_rate=lr)
 		
 		# check if the training/testing functions have been compiled
-		if hasattr(self, '_train_fn') and self._train_fn is not None:
+		if not hasattr(self, '_train_fn') or self._train_fn is not None:
 			ti = time.time();
 			self._train_fn = theano.function([self.input, target], cost, updates=updates)
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
-		if hasattr(self, '_test_fn') and self._test_fn is not None:
+		if not hasattr(self, '_test_fn') or self._test_fn is not None:
 			ti = time.time();
 			self._test_fn = theano.function([self.input, target], cost_test)
 			print_obj.println('Compiling test function took %.3f seconds' % (time.time() - ti,))
@@ -149,23 +152,23 @@ class FastRCNNDetector(object, BaseLearningObject):
 		test_loss_batch = []
 		
 		ti = time.time()
-		for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch, N=N, neg=neg):
+		for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, label_dict, num_batch=num_batch, N=N, neg=neg):
 			err = self._train_fn(Xbatch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
 		
-		for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, lab2num, num_batch=num_batch_test, N=N_test, neg=neg_test):
+		for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, label_dict, num_batch=num_batch_test, N=N_test, neg=neg_test):
 			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
 
-		print_obj.println('\nEpoch %d\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
-			(epoch, train_loss, test_loss))
+		print_obj.println('\n--------\nTrain Loss: %.4f, Test Loss: %.4f' % \
+			(train_loss, test_loss))
 		print_obj.println('Epoch took %.3f seconds.' % (time.time() - ti,))
 		time.sleep(.01)
-
-		return train_loss, test_loss
+		
+		return float(train_loss), float(test_loss)
 
 	def detect(self, im, proposals=None, thresh=.7):
 		if im.shape.__len__() == 2:
@@ -500,10 +503,10 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 
 			if neg_examples is not None:
 				new_objs.extend(_boxes_as_annotations(neg_examples))
-				for i in range(objs.__len__()):
-					idx = np.equal(pos_examples[:,-1], i)
+				for k in range(objs.__len__()):
+					idx = np.equal(pos_examples[:,-1], k)
 					if idx.nonzero() > 0:
-						new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[i]))
+						new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[k]))
 				new_annotation['annotations'] = new_objs
 
 				Xim, yim = _data_from_annotation(

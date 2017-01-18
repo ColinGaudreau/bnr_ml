@@ -137,7 +137,7 @@ def nms(preds, thresh=0.3):
 	pick = pick[0:counter]
 	return preds[pick,:]
 
-def draw_coord(im, coords, label_map=None):
+def draw_coord(im, coords, color=(255,255,255), label_map=None):
 	coords = np.copy(coords)
 	if im.max() <= 1:
 		im = im * 255
@@ -174,7 +174,7 @@ def draw_coord(im, coords, label_map=None):
 				draw.text(coord[:2].tolist(), text, fill=color)
 		return im
 	else:
-		draw_rects(draw, im.size, coords)
+		draw_rects(draw, im.size, coords, color=color)
 		return im
 
 
