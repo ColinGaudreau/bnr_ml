@@ -57,7 +57,7 @@ class FastRCNNDetector(BaseLearningObject):
 
 		# for detection
 		self._trained = False
-		self._hyperparameters = {}
+		self._hyperparameters = []
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1., eps=1e-4):
 		'''
@@ -95,7 +95,7 @@ class FastRCNNDetector(BaseLearningObject):
 			test_annotations=None,
 			label_dict=None,
 			print_obj=None,
-			updates=rmsprop,
+			update_fn=rmsprop,
 			num_batch=2,
 			N=20,
 			neg=.5,
@@ -105,43 +105,40 @@ class FastRCNNDetector(BaseLearningObject):
 			lr=1e-4,
 			momentum=0.9,
 			lmbda=1.,
-			hyperparameters=None,
+			hyperparameters={},
 		):
 		'''
 		'''
-		# set hyperparameters dict
-		self._hyperparameters = {
+		# update hyperparameters list
+		hyperparameters.update({
 			'num_batch': num_batch,
 			'N': N,
 			'neg': neg,
 			'lr': lr,
 			'momentum': momentum,
 			'lambda': lmbda,
-			'update_method': updates.__str__()
-		}
-		if hyperparameters is not None:
-			self._hyperparameters.update(hyperparameters)
+			'update_fn': update_fn.__str__()
+		})
+		self._hyperparameters.append(hyperparameters)
 
 		self._trained = True
 		target = T.matrix('target')
-
-		print_obj.println('Getting cost...')
-		cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
-		
-		cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
-
-		if lmbda == 0:
-			params = self.params[:-2]
-		else:
-			params = self.params
-		updates = rmsprop(cost, params, learning_rate=lr)
 		
 		# check if the training/testing functions have been compiled
-		if not hasattr(self, '_train_fn') or self._train_fn is not None:
+		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
+			print_obj.println('Getting cost...')
+			cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
+			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
+
+			if lmbda == 0:
+				params = self.params[:-2]
+			else:
+				params = self.params
+			updates = rmsprop(cost, params, learning_rate=lr)
+
 			ti = time.time();
 			self._train_fn = theano.function([self.input, target], cost, updates=updates)
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
-		if not hasattr(self, '_test_fn') or self._test_fn is not None:
 			ti = time.time();
 			self._test_fn = theano.function([self.input, target], cost_test)
 			print_obj.println('Compiling test function took %.3f seconds' % (time.time() - ti,))

@@ -17,9 +17,11 @@ from lasagne.updates import momentum as momentum_update
 
 from itertools import tee
 
+from ml_logger.learning_objects import BaseLearningObject
+
 import pdb
 
-class YoloObjectDetector(object):
+class YoloObjectDetector(BaseLearningObject):
 	'''
 
 	'''
@@ -60,89 +62,7 @@ class YoloObjectDetector(object):
 		self.output_test = get_output(output_test, B, S, num_classes)
 
 		self.params = layers.get_all_params(network['output'])
-
-	def _get_cost__outdated(self, output, truth, S, B, C, lmbda_coord=5., lmbda_noobj=0.5, iou_thresh=0.05):
-		'''
-			Takes only one annotation, this limits training to one object per image (which is bad).
-		'''
-		# calculate height/width of individual cell
-		block_height, block_width = 1. / S[0], 1./ S[1]
-
-		# get the offset of each cell
-		offset_x, offset_y = meshgrid2D(T.arange(0,1,block_width), T.arange(0,1,block_height))
-
-		# get indices for x,y,w,h,object-ness for easy access
-		x_idx, y_idx = T.arange(0,5*B,5), T.arange(1,5*B, 5)
-		w_idx, h_idx = T.arange(2,5*B,5), T.arange(3,5*B,5)
-		conf_idx = T.arange(4,5*B,5)
-		
-		# Get position predictions with offsets.
-		pred_x = output[:,x_idx] + offset_x.dimshuffle('x','x',0,1)
-		pred_y = output[:,y_idx] + offset_y.dimshuffle('x','x',0,1)
-		pred_w, pred_h, pred_conf = output[:,w_idx], output[:,h_idx], output[:,conf_idx]
-		pred_w, pred_h = T.maximum(pred_w, 0.), T.maximum(pred_h, 0.)
-
-		truth_x, truth_y, truth_w, truth_h = truth[:,0], truth[:,1], truth[:,2], truth[:,3]
-		truth_w, truth_h = T.maximum(truth_w, 0.), T.maximum(truth_h, 0.)
-		
-		# Get intersection region bounding box coordinates
-		xi = T.maximum(pred_x, truth_x.dimshuffle(0,'x','x','x'))
-		xf = T.minimum(pred_x + pred_w, (truth_x + truth_w).dimshuffle(0,'x','x','x'))
-		yi = T.maximum(pred_y, truth_y.dimshuffle(0,'x','x','x'))
-		yf = T.minimum(pred_y + pred_h, (truth_y + truth_h).dimshuffle(0,'x','x','x'))
-		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
-
-		# Calculate iou score for predicted boxes and truth
-		isec = w * h
-		union = (pred_w * pred_h) + (truth_w * truth_h).dimshuffle(0,'x','x','x') - isec
-		iou = T.maximum(isec/union, 0.)
-
-		# Get index matrix representing max along the 1st dimension for the iou score (reps 'responsible' box).
-		maxval_idx, _ = meshgrid2D(T.arange(B), T.arange(truth.shape[0]))
-		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x')
-		maxval_idx = T.repeat(T.repeat(maxval_idx,S[0],2),S[1],3)
-		
-		is_max = T.eq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
-		is_not_max = T.neq(maxval_idx, iou.argmax(axis=1).dimshuffle(0,'x',1,2))
-		
-		# Get matrix for the width/height of each cell
-		width, height = T.ones(S) / S[1], T.ones(S) / S[0]
-		width, height = width.dimshuffle('x',0,1), height.dimshuffle('x',0,1)
-		offset_x, offset_y = offset_x.dimshuffle('x',0,1), offset_y.dimshuffle('x',0,1)
-		
-		# Get bounding box for intersection between CELL and ground truth box.
-		xi = T.maximum(offset_x, truth_x.dimshuffle(0,'x','x'))
-		xf = T.minimum(offset_x + width, (truth_x + truth_w).dimshuffle(0,'x','x'))
-		yi = T.maximum(offset_y, truth_y.dimshuffle(0,'x','x'))
-		yf = T.minimum(offset_y + height, (truth_y + truth_h).dimshuffle(0,'x','x'))
-		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
-
-		# Calculate iou score for the cell.
-		isec = (xf - xi) * (yf - yi)
-		union = (width * height) + (truth_w* truth_h).dimshuffle(0,'x','x') - isec
-		iou_cell = T.maximum(isec/union, 0.)
-		
-		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
-		is_inter = (iou_cell > iou_thresh).dimshuffle(0,'x',1,2)
-
-		obj_in_cell_and_resp = T.bitwise_and(is_inter, is_max)
-		
-		# repeat "cell overlaps" logical matrix for the number of classes.
-		is_inter = T.repeat(is_inter, C, axis=1)
-		
-		# repeat the ground truth for class probabilities for each cell.
-		clspred_truth = T.repeat(T.repeat(truth[:,-C:].dimshuffle(0,1,'x','x'), S[0], axis=2), S[1], axis=3)
-		
-		# calculate cost
-		cost = T.sum((pred_conf - iou)[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_noobj * T.sum((pred_conf[bitwise_not(obj_in_cell_and_resp).nonzero()])**2) + \
-			lmbda_coord * T.sum((pred_x - truth[:,0].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((pred_y - truth[:,1].dimshuffle(0,'x','x','x'))[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((safe_sqrt(pred_w) - truth_w.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
-			lmbda_coord * T.sum((safe_sqrt(pred_h) - truth_h.dimshuffle(0,'x','x','x').sqrt())[obj_in_cell_and_resp.nonzero()]**2) + \
-			T.sum((output[:,-C:][is_inter.nonzero()] - clspred_truth[is_inter.nonzero()])**2)
-		
-		return cost / T.maximum(1., truth.shape[0])
+		self._hyperparameters = []
 
 	def _get_cost(self, output, truth, S, B, C, rescore=False, lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
 		'''
@@ -275,88 +195,88 @@ class YoloObjectDetector(object):
 
 		return updates
 
+	def get_weights(self):
+		return [p.get_value() for p in self.params]
+
+	def get_hyperparameters(self):
+		return self._hyperparameters
+
+	def get_architecture(self):
+		architecture = {}
+		for layer in self.network:
+			architecture[layer] = self.network[layer].__str__()
+		return architecture
+
+	def load_model(self, weights):
+		return weights
+
 	def train(
 			self,
-			gen_fn,
-			train_annotations,
-			test_annotations,
-			batch_size=10,
-			epochs=10,
-			lr=1e-4,
-			momentum=0.9,
+			gen_fn=None,
+			train_annotations=None,
+			test_annotations=None,
+			train_args=None,
+			test_args=None,
+			print_obj=None,
+			update_fn=rmsprop,
 			lmbda_coord=5.,
 			lmbda_noobj=0.5,
-			rescore=False,
-			target=None,
-			seed=1991, 
-			logfile='/dev/stdout'
+			lmbda_obj=1.,
+			rescore=True,
+			hyperparameters={},
 		):
-		np.random.seed(seed)
+
+		hyperparameters.update({
+			'update_fn': update_fn.__str__(),
+			'lambda_coord': lmbda_coord,
+			'lambda_noobj': lmbda_noobj,
+			'lambda_obj': lmbda_obj,
+			'rescore': rescore
+		})
+		self._hyperparameters.append(hyperparameters)
+
+		if test_args is None:
+			test_args = train_args
 		
-		logfile = open(logfile, 'w')
+		if not hasattr(self, '_train_fn') or hasattr(self, '_test_fn'):
+			if not hasattr(self, 'target'):
+				self.target = T.matrix('target')
 
-		if target is None:
-			target = T.matrix('target')
+			print_obj.println('Getting cost...\n')
+			ti = time.time()
+			cost, constants = self._get_cost(self.output, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
+			cost_test, _ = self._get_cost(self.output_test, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
+			
+			print_obj.println(("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
+
+			grads = T.grad(cost, self.params, consider_constant=constants)
+			updates = update_fn(grads, self.params)
+			
+			print_obj.println('Compiling...\n')
+			ti = time.time()
+			self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target], cost_test)
+			
+			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
+
+		print_obj.println('Beginning training...\n')
+
+		train_loss_batch = []
+		test_loss_batch = []
+
+		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
+			err = self._train_fn(Xbatch, ybatch)
+			train_loss_batch.append(err)
+			print_obj.println('Batch error: %.4f\n' % err)
+
+		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
+
+		train_loss = np.mean(train_loss_batch)
+		test_loss = np.mean(test_loss_batch)
 		
-		logfile.write('Getting cost...\n')
-		print('Getting cost...'); time.sleep(0.1)
-		ti = time.time()
-		cost, constants = self._get_cost(self.output, target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		cost_test, _ = self._get_cost(self.output_test, target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj)
-		
-		logfile.write("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
-		print("Creating cost variable took %.4f seconds" % (time.time() - ti,))
+		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
-		grads = T.grad(cost, self.params, consider_constant=constants)
-		#updates = rmsprop(grads, self.params, learning_rate=lr)
-		updates = adam(grads, self.params, learning_rate=lr)
-		#updates = momentum_update(grads, self.params, lr, momentum)
-		
-		logfile.write('Compiling...\n')
-		print('Compiling...'); time.sleep(0.1)
-		ti = time.time()
-		train_fn = theano.function([self.input, target], cost, updates=updates)
-		test_fn = theano.function([self.input, target], cost_test)
-		
-		logfile.write('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
-		print("Compiling functions took %.4f seconds" % (time.time() - ti,))
-
-		train_loss = np.zeros((epochs,))
-		test_loss = np.zeros((epochs,))
-
-		logfile.write('Beginning training...\n')
-		print('Beginning training...'); time.sleep(0.1)
-
-		try:
-			for epoch in tqdm(range(epochs)):
-				#idx = np.arange(Xtrain.shape[0])
-				#np.random.shuffle(idx)
-				#Xtrain, ytrain = Xtrain[idx], ytrain[idx]
-
-				train_loss_batch = []
-				test_loss_batch = []
-
-				#train_gen, train_gen_backup = tee(train_gen)
-				#test_gen, test_gen_backup = tee(test_gen)
-
-				for Xbatch, ybatch in gen_fn(train_annotations, self.input_shape[2:], batch_size):
-					err = train_fn(Xbatch, ybatch)
-					logfile.write('Batch error: %.4f\n' % err)
-					print(err)
-					train_loss_batch.append(err)
-
-				for Xbatch, ybatch in gen_fn(test_annotations, self.input_shape[2:], batch_size):
-					test_loss_batch.append(test_fn(Xbatch, ybatch))
-
-				train_loss[epoch] = np.mean(train_loss_batch)
-				test_loss[epoch] = np.mean(test_loss_batch)
-				
-				logfile.write('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (epoch, train_loss[epoch], test_loss[epoch]))
-				print('Epoch %d\n------\nTrain Loss: %.4f, Test Loss: %.4f' % (epoch, train_loss[epoch], test_loss[epoch])); time.sleep(0.1)
-		except KeyboardInterrupt:
-			logfile.close()
-		
-		logfile.close()
 		return train_loss, test_loss
 
 	@staticmethod
