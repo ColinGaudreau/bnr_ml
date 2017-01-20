@@ -50,7 +50,7 @@ class YoloObjectDetector(BaseLearningObject):
 		output_test = layers.get_output(network['output'], deterministic=True)
 
 		def get_output(output, B, S, num_classes):
-			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))
+			output = T.reshape(output, (-1, B * 5 + num_classes, S[0], S[1]))s
 			for i in range(B):
 				#output = T.set_subtensor(output[:,5*i:5*i+2,:,:], 2 * T.nnet.sigmoid(output[:,5*i:5*i+2,:,:]) - 1)
 				output = T.set_subtensor(output[:,5*i + 2:5*i + 4,:,:], T.abs_(output[:,5*i + 2:5*i + 4,:,:]))
