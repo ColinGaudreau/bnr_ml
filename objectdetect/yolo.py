@@ -183,7 +183,6 @@ class YoloObjectDetector(BaseLearningObject):
 			lmbda_obj * T.sum(((pred_class - truth_class_rep)[cell_intersects.nonzero()])**2)
 
 		cost /= T.maximum(1., truth.shape[0])
-		pdb.set_trace()
 		return cost, [iou]
 
 	def _get_updates(self, cost, params, lr=1e-4):
@@ -238,7 +237,7 @@ class YoloObjectDetector(BaseLearningObject):
 		if test_args is None:
 			test_args = train_args
 		
-		if not hasattr(self, '_train_fn') or hasattr(self, '_test_fn'):
+		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			if not hasattr(self, 'target'):
 				self.target = T.matrix('target')
 
@@ -247,7 +246,7 @@ class YoloObjectDetector(BaseLearningObject):
 			cost, constants = self._get_cost(self.output, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
 			cost_test, _ = self._get_cost(self.output_test, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
 			
-			print_obj.println(("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
+			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 
 			grads = T.grad(cost, self.params, consider_constant=constants)
 			updates = update_fn(grads, self.params)
