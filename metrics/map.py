@@ -1,5 +1,7 @@
 import numpy as np
-from bnr_ml.objectdetect import BoundingBox
+from bnr_ml.objectdetect.utils import BoundingBox
+
+import pdb
 
 def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=False):
 	'''
@@ -18,9 +20,9 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 
 	num_labels = labels.__len__()
 	was_used = np.zeros(num_labels, dtype=np.bool)
-	tp, fp = np.zeros(predictions.shape[0]), np.zeros(predicitons.shape[0])
+	tp, fp = np.zeros(predictions.shape[0]), np.zeros(predictions.shape[0])
 
-	for i in predictions.shape[0]:
+	for i in range(predictions.shape[0]):
 		pred = predictions[i]
 		pred_box = BoundingBox(pred[0], pred[1], pred[0] + pred[2], pred[1] + pred[3])
 		best_iou = -np.inf
@@ -33,19 +35,19 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 				was_used[j] = False
 
 		if best_iou > min_iou:
-			if !was_used[best_label]:
-				tp[i] += 1
+			if not was_used[best_label]:
+				tp[i] += 1.
 			else:
-				fp[i] += 1
+				fp[i] += 1.
 		else:
-			fp[i] += 1
+			fp[i] += 1.
 
-		tp, fp = np.cumsum(tp), np.cumsum(fp)
-		recall = tp / num_labels
-		precision = tp / (tp + fp)
+	tp, fp = np.cumsum(tp), np.cumsum(fp)
+	recall = tp / num_labels
+	precision = tp / (tp + fp)
 
-		return precision, recall
-		# avg_precision = _ap(precision, recall)
+	return precision, recall
+	# avg_precision = _ap(precision, recall)
 
 
 def _ap(precision, recall):
