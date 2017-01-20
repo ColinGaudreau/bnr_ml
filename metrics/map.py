@@ -1,5 +1,5 @@
 import numpy as np
-from bnr_ml.objectdetect import BoundingBox
+from bnr_ml.objectdetect.utils import BoundingBox
 
 def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=False):
 	'''
