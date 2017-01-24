@@ -10,6 +10,7 @@ from lasagne.updates import rmsprop, sgd
 
 from skimage.io import imread
 from skimage.transform import resize
+import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox, transform_coord
@@ -167,7 +168,7 @@ class FastRCNNDetector(BaseLearningObject):
 		
 		return float(train_loss), float(test_loss)
 
-	def detect(self, im, proposals=None, thresh=.7):
+	def detect(self, im, proposals=None, thresh=.7, batch_size=50, use_cv=True):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
@@ -197,12 +198,20 @@ class FastRCNNDetector(BaseLearningObject):
 				if box.size > 0:
 					subim = box.subimage(im)
 					if np.prod(im.shape) > 0:
-						subim = resize(subim, self.input_shape)
+						if use_cv:
+							subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
+						else:
+							subim = resize(subim, self.input_shape)
 						ims[cnt] = swap(subim)
 						regions.append(box)
 						cnt += 1
 			regions = np.asarray(regions)
-			class_score, coord = self._detect_fn(ims[:cnt])
+			ims = ims[:cnt]
+			class_score, coord = np.zeros((0,self.num_classes + 1)), np.zeros((0,self.num_classes + 1,4))
+			for i in tqdm(range(0, ims.shape[0], batch_size)):
+				cs, crd = self._detect_fn(ims[i:i + batch_size])
+				class_score, coord = np.concatenate((class_score, cs), axis=0), np.concatenate((coord, crd), axis=0)
+			#class_score, coord = self._detect_fn(ims[:cnt])
 			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
 			coord = coord[np.arange(coord.shape[0]), class_idx]
 			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
