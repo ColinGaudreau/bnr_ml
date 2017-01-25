@@ -13,8 +13,9 @@ from skimage.transform import resize
 import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
-from bnr_ml.objectdetect.utils import BoundingBox, transform_coord
+from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.utils.helpers import meshgrid2D
+from bnr_ml.objectdetect.detector import AbstractDetector
 
 from copy import deepcopy
 from itertools import tee
@@ -24,7 +25,7 @@ from tqdm import tqdm
 
 from ml_logger.learning_objects import BaseLearningObject
 
-class FastRCNNDetector(BaseLearningObject):
+class FastRCNNDetector(BaseLearningObject, AbstractDetector):
 	'''
 		network should have an:
 			input: this is the input layer
@@ -168,7 +169,7 @@ class FastRCNNDetector(BaseLearningObject):
 		
 		return float(train_loss), float(test_loss)
 
-	def detect(self, im, proposals=None, thresh=.7, batch_size=50, use_cv=True):
+	def detect(self, im, proposals=None, thresh=.7, batch_size=50):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
@@ -198,25 +199,29 @@ class FastRCNNDetector(BaseLearningObject):
 				if box.size > 0:
 					subim = box.subimage(im)
 					if np.prod(im.shape) > 0:
-						if use_cv:
-							subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
-						else:
-							subim = resize(subim, self.input_shape)
+						# this method is waaaaayyyyy faster
+						subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
 						ims[cnt] = swap(subim)
 						regions.append(box)
 						cnt += 1
 			regions = np.asarray(regions)
-			ims = ims[:cnt]
 			class_score, coord = np.zeros((0,self.num_classes + 1)), np.zeros((0,self.num_classes + 1,4))
-			for i in tqdm(range(0, ims.shape[0], batch_size)):
-				cs, crd = self._detect_fn(ims[i:i + batch_size])
-				class_score, coord = np.concatenate((class_score, cs), axis=0), np.concatenate((coord, crd), axis=0)
-			#class_score, coord = self._detect_fn(ims[:cnt])
+
+			# use batches to compute window
+			if batch_size is not None:
+				for i in tqdm(range(0, cnt, batch_size)):
+					cs, crd = self._detect_fn(ims[i:i + batch_size])
+					class_score, coord = np.concatenate((class_score, cs), axis=0), np.concatenate((coord, crd), axis=0)
+			else:
+				class_score, coord = self._detect_fn(ims[:cnt])
+
+			# format output
 			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
 			coord = coord[np.arange(coord.shape[0]), class_idx]
 			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
 			class_score, coord, regions = class_score[obj_idx], coord[obj_idx], regions[obj_idx]
 			
+			# set correct size of prediction.
 			for i in range(coord.shape[0]):
 				coord[i,[0,2]] *= regions[i].w
 				coord[i,[1,3]] *= regions[i].h

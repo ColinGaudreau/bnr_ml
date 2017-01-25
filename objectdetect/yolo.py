@@ -1,11 +1,13 @@
 import theano
 from theano import tensor as T
 import numpy as np
+
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid2D, bitwise_not
+from bnr_ml.utils.helpers import meshgrid2D, bitwise_not, StreamPrinter
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
 from bnr_ml.objectdetect import utils
+
 from collections import OrderedDict
 from tqdm import tqdm
 import time
@@ -17,14 +19,58 @@ from lasagne.updates import momentum as momentum_update
 
 from itertools import tee
 
-from ml_logger.learning_objects import BaseLearningObject
+from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 import pdb
 
-class YoloObjectDetector(BaseLearningObject):
-	'''
+class YoloSettings(BaseLearningSettings):
+	def __init__(
+			self,
+			train_annotations,
+			test_annotations,
+			train_args,
+			test_args=None,
+			print_obj=None,
+			update_fn=rmsprop,
+			update_args={'learning_rate': 1e-5},
+			lmbda_coord=5.,
+			lmbda_noobj=0.5,
+			lmbda_obj=1.,
+			rescore=True,
+			hyperparameters={}
+		):
+		super(YoloSettings, self).__init__()
+		self.train_annotations = train_annotations
+		self.test_annotations = test_annotations
+		self.train_args = train_args
+		if test_args is None:
+			self.test_args = train_args
+		else:
+			self.test_args = test_args
+		if print_obj is None:
+			self.print_obj = StreamPrinter(open('/dev/stdout', 'w'))
+		else:
+			self.print_obj = print_obj
+		self.update_fn = rmsprop
+		self.update_args = update_args
+		self.lmbda_coord = lmbda_coord
+		self.lmbda_noobj = lmbda_noobj
+		self.lmbda_obj = lmbda_obj
+		self.rescore = rescore
+		self.hyperparameters = {}
 
-	'''
+	def serialize(self):
+		serialization = {}
+		serialization['update_fn'] = self.update_fn.__str__()
+		serialization['lmbda_coord'] = self.lmbda_coord
+		serialization['lmbda_noobj'] = self.lmbda_noobj
+		serialization['lmbda_obj'] = self.lmbda_obj
+		serialization['rescore'] = self.rescore	
+		serialization.extend(self.hyperparameters)
+		return serialization
+
+class YoloObjectDetector(BaseLearningObject):
+
 	def __init__(
 			self,
 			network,
@@ -39,6 +85,7 @@ class YoloObjectDetector(BaseLearningObject):
 			Dict with the entire network defined, must have a "feature_map" and "output" layer.
 			You must be able to call .get_output() on these layers.
 		'''
+		super(YoloObjectDetector, self).__init__()
 		self.network = network
 		self.num_classes = num_classes
 		self.S = S
@@ -62,7 +109,6 @@ class YoloObjectDetector(BaseLearningObject):
 		self.output_test = get_output(output_test, B, S, num_classes)
 
 		self.params = layers.get_all_params(network['output'])
-		self._hyperparameters = []
 
 	def _get_cost(self, output, truth, S, B, C, rescore=False, lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
 		'''
@@ -185,19 +231,20 @@ class YoloObjectDetector(BaseLearningObject):
 		cost /= T.maximum(1., truth.shape[0])
 		return cost, [iou]
 
-	def _get_updates(self, cost, params, lr=1e-4):
-		lr = T.as_tensor_variable(lr)
-		updates = OrderedDict()
-		grads = T.grad(cost, params)
-		for param, grad in zip(params, grads):
-			updates[param] = param - lr * grad
-
-		return updates
-
+	'''
+	Implement functions for the BaseLearningObject Class
+	'''
 	def get_weights(self):
 		return [p.get_value() for p in self.params]
 
 	def get_hyperparameters(self):
+		self._hyperparameters = super(YoloObjectDetector, self).get_hyperparameters()
+		curr_hyperparameters = self._hyperparameters[-1]
+		curr_hyperparameters.extend({
+			'S': list(self.S),
+			'B': self.B,
+			'num_classes': self.num_classes
+			})
 		return self._hyperparameters
 
 	def get_architecture(self):
@@ -207,35 +254,22 @@ class YoloObjectDetector(BaseLearningObject):
 		return architecture
 
 	def load_model(self, weights):
-		return weights
+		layers.set_all_param_values(self.network['output'], weights)
 
-	def train(
-			self,
-			gen_fn=None,
-			train_annotations=None,
-			test_annotations=None,
-			train_args=None,
-			test_args=None,
-			print_obj=None,
-			update_fn=rmsprop,
-			lmbda_coord=5.,
-			lmbda_noobj=0.5,
-			lmbda_obj=1.,
-			rescore=True,
-			hyperparameters={},
-		):
-
-		hyperparameters.update({
-			'update_fn': update_fn.__str__(),
-			'lambda_coord': lmbda_coord,
-			'lambda_noobj': lmbda_noobj,
-			'lambda_obj': lmbda_obj,
-			'rescore': rescore
-		})
-		self._hyperparameters.append(hyperparameters)
-
-		if test_args is None:
-			test_args = train_args
+	def train(self):
+		# get settings from Yolo settings object
+		gen_fn = self.settings.gen_fn
+		train_annotations = self.settings.train_annotations
+		test_annotations = self.settings.test_annotations
+		train_args = self.settings.train_args
+		test_args = self.settings.test_args
+		print_obj = self.settings.print_obj
+		update_fn = self.settings.update_fn
+		update_args = self.settings.update_args
+		lmbda_coord = self.settings.lmbda_coord
+		lmbda_noobj = self.settings.lmbda_noobj
+		lmbda_obj = self.settings.lmbda_obj
+		rescore = self.settings.rescore
 		
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			if not hasattr(self, 'target'):
@@ -249,7 +283,7 @@ class YoloObjectDetector(BaseLearningObject):
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 
 			grads = T.grad(cost, self.params, consider_constant=constants)
-			updates = update_fn(grads, self.params)
+			updates = update_fn(grads, self.params, **update_args)
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
