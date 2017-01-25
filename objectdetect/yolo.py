@@ -26,6 +26,7 @@ import pdb
 class YoloSettings(BaseLearningSettings):
 	def __init__(
 			self,
+			gen_fn,
 			train_annotations,
 			test_annotations,
 			train_args,
@@ -40,6 +41,7 @@ class YoloSettings(BaseLearningSettings):
 			hyperparameters={}
 		):
 		super(YoloSettings, self).__init__()
+		self.gen_fn = gen_fn
 		self.train_annotations = train_annotations
 		self.test_annotations = test_annotations
 		self.train_args = train_args
@@ -62,11 +64,12 @@ class YoloSettings(BaseLearningSettings):
 	def serialize(self):
 		serialization = {}
 		serialization['update_fn'] = self.update_fn.__str__()
+		serialization['update_args'] = self.update_args
 		serialization['lmbda_coord'] = self.lmbda_coord
 		serialization['lmbda_noobj'] = self.lmbda_noobj
 		serialization['lmbda_obj'] = self.lmbda_obj
 		serialization['rescore'] = self.rescore	
-		serialization.extend(self.hyperparameters)
+		serialization.update(self.hyperparameters)
 		return serialization
 
 class YoloObjectDetector(BaseLearningObject):
@@ -240,7 +243,7 @@ class YoloObjectDetector(BaseLearningObject):
 	def get_hyperparameters(self):
 		self._hyperparameters = super(YoloObjectDetector, self).get_hyperparameters()
 		curr_hyperparameters = self._hyperparameters[-1]
-		curr_hyperparameters.extend({
+		curr_hyperparameters.update({
 			'S': list(self.S),
 			'B': self.B,
 			'num_classes': self.num_classes
