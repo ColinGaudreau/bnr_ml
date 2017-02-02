@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.random as npr
 from PIL import Image, ImageDraw
 
 import pdb
@@ -30,6 +31,14 @@ class BoundingBox(object):
 	def size(self):
 		return self.w*self.h
 
+	def __setattr__(self, name, value):
+		if name == 'w':
+			self.xf = self.xi + value
+		elif name == 'h':
+			self.yf = self.yi + value
+		else:
+			return super(BoundingBox, self).__setattr__(name, value)
+
 	def iou(self, box):
 		isec = self.intersection(box)
 		union = self.size + box.size - isec.size
@@ -52,8 +61,11 @@ class BoundingBox(object):
 			new_xi, new_yi, new_xf, new_yf = 0., 0., 0., 0.
 		return BoundingBox(new_xi, new_yi, new_xf, new_yf)
 
-	def to_arr(self):
+	def tolist(self):
 		return [self.xi, self.yi, self.xf, self.yi]
+
+	def tondarray(self):
+		return np.asarray([self.xi, self.yi, self.w, self.h])
 
 	def isvalid(self):
 		valid = True
@@ -72,11 +84,12 @@ class BoundingBox(object):
 		yf = min(im.shape[0], self.yf)
 		return im[yi:yf, xi:xf,:]
 
-	def to_ndarray(self):
-		return np.asarray([self.xi, self.yi, self.w, self.h])
-
 	def round(self):
 		self.xi, self.yi, self.xf, self.yf = round(self.xi), round(self.yi), round(self.xf), round(self.yf)
+
+	'''
+	Override operator for easier use of BoundingBox class
+	'''
 
 	def __str__(self):
 		return '(' + str(self.xi) + ',' + str(self.yi) + ') (' + str(self.xf) + ',' + str(self.yf) + ')'
@@ -85,24 +98,48 @@ class BoundingBox(object):
 		return self.__str__()
 
 	def __mul__(self, other):
-		return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+		else:
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
 
 	def __rmul__(self, other):
-		return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+		else:
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+
+	def __imul__(self, other):
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+		else:
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
 
 	def __div__(self, other):
-		return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+		else:
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
 
 	def __rdiv__(self, other):
-		return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+		else:
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
 
-	def __truediv__(self, other):
-		return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
-
-	def __rtruediv__(self, other):
-		return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+	def __idiv__(self, other):
+		if other.__class__ == tuple:
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+		else:
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
 
 	def __add__(self, other):
+		if other.__class__ != BoundingBox:
+			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other)
+		else:
+			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf)
+
+	def __radd__(self, other):
 		if other.__class__ != BoundingBox:
 			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other)
 		else:
@@ -120,6 +157,12 @@ class BoundingBox(object):
 		else:
 			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf)
 
+	def __rsub__(self, other):
+		if other.__class__ != BoundingBox:
+			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other)
+		else:
+			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf)
+
 	def __isub__(self, other):
 		if other.__class__ != BoundingBox:
 			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other)
@@ -128,7 +171,7 @@ class BoundingBox(object):
 
 	@staticmethod
 	def gen_randombox(overlap, box, eps=.9):
-		vec = np.random.randn(4)
+		vec = npr.randn(4)
 		vec /= np.sqrt(np.sum(vec**2))
 		new_box = box.copy()
 		while box.iou(new_box) > overlap:
@@ -137,6 +180,43 @@ class BoundingBox(object):
 			new_box.xf += vec[2]
 			new_box.yf += vec[3]
 		return new_box
+
+def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,255)):
+	if im.max() <= 1:
+		im = im * 255
+	if im.dtype != np.uint8:
+		im = im.astype(np.uint8)
+	im = Image.fromarray(im)
+
+	if coords.shape[0] == 0:
+		return im
+
+	draw = ImageDraw.Draw(im)
+
+	# decide color for labels
+	if class_labels:
+		color = {}
+		unique_labels = np.unique(class_labels).tolist()
+		for label in unique_labels:
+			color[label] = tuple(np.int_(255 * npr.rand(3,)))
+
+	for i, box in enumerate(boxes):
+		if class_labels is not None:
+			label_color = color[class_labels[i]]
+			text = class_labels[i]
+		else:
+			label_color = color
+			text = ''
+
+		if class_scores is not None:
+			if class_labels is not None:
+				text += ', '
+			text += ('Confidence: %.2f' % class_scores[i])
+
+		draw.rectangle(box.tolist(), outline=color)
+		draw.text(box.tolist()[:2], text, fill=color
+
+	return im
 
 def _draw_rects(draw, size, coords, color=(255, 255, 255)):
 		for i in range(coords.shape[0]):
@@ -165,7 +245,7 @@ def draw_coord(im, coords, color=(255,255,255), label_map=None):
 		for cls in unique_classes:
 			class_idx = coords[:,-1] == cls
 			class_coords = coords[class_idx]
-			color = tuple(np.int_(255 * np.random.rand(3,))) # color for class
+			color = tuple(np.int_(255 * npr.rand(3,))) # color for class
 			_draw_rects(draw, im.size, class_coords, color=color)
 			for i in range(class_coords.shape[0]):
 				coord = class_coords[i]
@@ -177,24 +257,6 @@ def draw_coord(im, coords, color=(255,255,255), label_map=None):
 	else:
 		_draw_rects(draw, im.size, coords, color=color)
 		return im
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

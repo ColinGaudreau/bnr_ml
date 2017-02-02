@@ -1,4 +1,4 @@
-class AbstractDetector(object):
+class BaseDetector(object):
 	'''
 	Abstract class for detectors
 	'''

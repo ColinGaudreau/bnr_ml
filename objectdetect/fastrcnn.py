@@ -15,7 +15,7 @@ import cv2
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.utils.helpers import meshgrid2D
-from bnr_ml.objectdetect.detector import AbstractDetector
+from bnr_ml.objectdetect.detector import BaseDetector
 
 from copy import deepcopy
 from itertools import tee
@@ -23,9 +23,11 @@ import time
 import pdb
 from tqdm import tqdm
 
+import dlib
+
 from ml_logger.learning_objects import BaseLearningObject
 
-class FastRCNNDetector(BaseLearningObject, AbstractDetector):
+class FastRCNNDetector(BaseLearningObject, BaseDetector):
 	'''
 		network should have an:
 			input: this is the input layer
@@ -169,7 +171,83 @@ class FastRCNNDetector(BaseLearningObject, AbstractDetector):
 		
 		return float(train_loss), float(test_loss)
 
-	def detect(self, im, proposals=None, thresh=.7, batch_size=50):
+	def _propose_regions(self, im, kvals):
+		regions = []
+		dlib.find_candidate_object_locations(im, regions, kvals, min_size)
+		return [BoundingBox(r.left(), r.top(), r.width(), r.height()) for r in rects]
+
+	def _filter_regions(self, regions, min_w, min_h):
+		return [box for box in regions if box.w > min_w and box.h > min_h and box.isvalid()]
+
+	def _rescale_image(self, im, max_dim):
+		scale = float(max_dim) / (max(im.shape[0], im.shape[1]))
+		new_shape = (int(im.shape[0] * scale), int(im.shape[1] * scale))
+		return cv2.resize(im, new_shape, interpolation=cv2.INTER_LINEAR)
+
+	def detect(
+			im,
+			thresh=0.5,
+			kvals=(30,200,3),
+			max_dim=600,
+			min_w=10,
+			min_h=10,
+			batch_size=50
+		):
+		if im.shape.__len__() == 2:
+			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+		if im.shape[2] > 3:
+			im = im[:,:,:3]
+		if im.max() > 1:
+			im = im / 255.
+		if im.dtype != theano.config.floatX:
+			im = im.astype(theano.config.floatX)
+
+		im = _rescale_image(self, im, max_dim)
+
+		# compile detection function if it has not yet been done
+		if self._trained or not hasattr(self, '_detect_fn'):
+			self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
+			self._trained = False
+
+		regions = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h)
+
+		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
+		im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
+
+		for i, box in enumerate(regions):
+			subim = box.subimage(im)
+			subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
+			im_list[i] = swap(subim)
+
+		# compute scores for the regions
+		if batch_size is not None:
+			class_score, coord = np.zeros((regions.__len__(), self.num_classes + 1)), np.zeros((regions.__len__(), self.num_classes + 1, 4))
+			for i in range(0, regions.__len__(), batch_size):
+				class_score[i:i+batch_size], crd[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
+		else:
+			class_score, coord = self._detect_fn(im_list)
+
+		# filter out windows which are 1) not labeled to be an object 2) below threshold
+		class_id = np.argmax(class_score, axis=1)
+		class_score = class_score[np.arange(class_score.shape[0]), class_id]
+		is_obj = class_score > thresh
+		coord = coord[np.arange(coord.shape[0]), class_id][is_obj]
+		coord[:,2:] = np.exp(coord[:,2:])
+		regions = [box for (o,box) in zip(is_obj, regions) if o]
+
+		objects = []
+		for i, box in enumerate(regions):
+			coord[i, [0,2]] *= box.w
+			coord[i, [1,3]] *= box.h
+			coord[i, 0] += box.xi
+			coord[i, 1] += box.xf
+			coord[i, 2:] += coord[i, :2]
+			obj = BoundingBox(*box[i,:].tolist())
+			objects.append(obj)
+
+		return objects, class_score.tolist(), class_id[is_obj].tolist()
+
+	def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:
@@ -340,9 +418,6 @@ def _generate_boxes_from_obj(obj, imsize, num_pos=20, num_scale=20, mult=2):
 
 	return boxes
 
-
-# In[957]:
-
 def _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2):
 	boxes = None
 	for i in range(objs.__len__()):
@@ -352,9 +427,6 @@ def _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2):
 		else:
 			boxes = np.concatenate((boxes, new_boxes), axis=0)
 	return boxes
-
-
-# In[915]:
 
 def _boxes_as_annotations(boxes, obj=None):
 	objs = []
@@ -372,9 +444,6 @@ def _boxes_as_annotations(boxes, obj=None):
 		objs.append(new_obj)
 	return objs
 
-
-# In[916]:
-
 def _calc_overlap(boxes, gt_boxes):
 		xi = np.maximum(boxes[:,0], gt_boxes[:,0])
 		yi = np.maximum(boxes[:,1], gt_boxes[:,1])
@@ -385,9 +454,6 @@ def _calc_overlap(boxes, gt_boxes):
 		boxes_size, gt_boxes_size = np.prod(boxes[:,2:], axis=1), np.prod(gt_boxes[:,2:], axis=1)
 		union = boxes_size + gt_boxes_size - isec
 		return isec / union, isec / gt_boxes_size
-
-
-# In[937]:
 
 def _find_valid_boxes(
 		objs, boxes, 
@@ -480,9 +546,6 @@ def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano
 		labels[i] = gtruth
 		X[i] = subim.reshape((1,) + subim.shape).swapaxes(3,2).swapaxes(2,1)
 	return X, labels
-
-
-# In[1044]:
 
 def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=theano.config.floatX, N=100, neg=.75, min_obj_size=30*30):
 	'''
