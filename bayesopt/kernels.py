@@ -12,6 +12,9 @@ class Parameter(object):
         self.value = value
         self.prior = prior
 
+    def __repr__(self):
+        return '{}, Prior: {}'.format(self.value, self.prior)
+
 class BaseKernel(object):
     def __init__(self, parameters=[]):
         self.parameters = parameters
@@ -38,6 +41,9 @@ class BaseKernel(object):
 
         idx1, idx2 = np.meshgrid(np.arange(x.shape[0]), np.arange(y.shape[0]))
         return x[idx1], y[idx2]
+
+    def __repr__(self):
+        return '{}, {}'.format(self.__class__, self.parameters.__str__())
 
 class SquaredExpKernel(BaseKernel):
     def __init__(self, parameters=[]):

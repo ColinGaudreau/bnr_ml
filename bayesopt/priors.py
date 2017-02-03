@@ -8,6 +8,9 @@ class BasePrior(object):
     def logprob(self, x):
         raise NotImplementedError
 
+    def __repr__(self):
+        return self.__class__.__name__
+
 class UninformativePrior(BasePrior):
     def logprob(self, x):
         return 0.
