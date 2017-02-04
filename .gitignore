@@ -4,6 +4,7 @@
 *ubyte
 *.m~
 *.DS_Store
+**/*.DS_Store
 
 **/*.pyc
 
