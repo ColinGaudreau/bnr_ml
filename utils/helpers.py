@@ -38,8 +38,12 @@ def meshgrid2D(arr1, arr2):
 	arr1, arr2 = T.repeat(arr1, arr2.shape[0], axis=0), T.repeat(arr2, arr1.shape[1], axis=1)
 	return arr1, arr2
 
-def meshgrid(*xi):
+def meshgrid(*xi, **kwargs):
 	assert(xi.__len__() > 1)
+	if 'flatten' in kwargs:
+		flatten = kwargs['flatten']
+	else:
+		flatten = False
 	arrs = []
 	for i, x in enumerate(xi):
 		ds_args = ['x' if k != i else 0 for k in range(xi.__len__())]
@@ -48,12 +52,11 @@ def meshgrid(*xi):
 		for j in range(xi.__len__()):
 			if j != i:
 				arr = T.repeat(arr, xi[j].shape[0], axis=j)
+		if flatten:
+			arr = arr.reshape((-1,))
 		arrs.append(arr)
 
 	return arrs
-
-
-
 
 def softmax(mat, axis=1):
 	'''	
