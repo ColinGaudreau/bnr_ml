@@ -53,7 +53,7 @@ class YoloSettings(BaseLearningSettings):
 			self.print_obj = StreamPrinter(open('/dev/stdout', 'w'))
 		else:
 			self.print_obj = print_obj
-		self.update_fn = rmsprop
+		self.update_fn = update_fn
 		self.update_args = update_args
 		self.lmbda_coord = lmbda_coord
 		self.lmbda_noobj = lmbda_noobj

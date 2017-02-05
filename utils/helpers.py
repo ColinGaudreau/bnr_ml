@@ -52,9 +52,6 @@ def meshgrid(*xi):
 
 	return arrs
 
-
-
-
 def softmax(mat, axis=1):
 	'''	
 	axis along which to take soft max, axis \in {0,1,2,3}
