@@ -148,6 +148,17 @@ def scale_to_unit_interval(ndar, eps=1e-8):
 	ndar *= 1.0 / (ndar.max() + eps)
 	return ndar
 
+def format_image(im, dtype=np.float64):
+	if im.shape.__len__() == 2:
+		im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+	if im.shape[2] > 3:
+		im = im[:,:,:3]
+	if im.max() > 1:
+		im = im / 255
+	if im.dtype != dtype:
+		im = im.astype(dtype)
+	return im
+
 def tile_raster_images(X, img_shape, tile_shape, tile_spacing=(0, 0),
 					   scale_rows_to_unit_interval=True,
 					   output_pixel_vals=True):

@@ -215,7 +215,7 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 
 		draw.rectangle(box.tolist(), outline=color)
 		draw.text(box.tolist()[:2], text, fill=color)
-	
+
 	return im
 
 def _draw_rects(draw, size, coords, color=(255, 255, 255)):

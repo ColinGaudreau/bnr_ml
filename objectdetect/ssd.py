@@ -3,11 +3,14 @@ from theano import tensor as T
 import numpy as np
 import numpy.random as npr
 
-from bnr_ml.utils.helpers import StreamPrinter, meshgrid
+from bnr_ml.utils.helpers import StreamPrinter, meshgrid, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_abs
+from bnr_ml.objectdetect.utils import BoundingBox
 
 from lasagne import layers
 from lasagne.updates import rmsprop
+
+import cv2
 
 from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
@@ -71,10 +74,13 @@ class SingleShotDetector(BaseLearningObject):
 		self.smin = smin
 		self.smax = smax
 		self.input = network['input'].input_var
+		self.input_shape = network['input'].shape
 		
 		# build default map
 		self._build_default_maps()
 		self._build_predictive_maps()
+
+		self._trained = False
 
 		return
 	
@@ -114,6 +120,8 @@ class SingleShotDetector(BaseLearningObject):
 		self.set_params(weights)
 
 	def train(self):
+		self._trained = True
+
 		# get settings from SSD settings object
 		gen_fn = self.settings.gen_fn
 		train_annotations = self.settings.train_annotations
@@ -167,6 +175,29 @@ class SingleShotDetector(BaseLearningObject):
 		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
 		return train_loss, test_loss
+
+	def detect(self, im, thresh=0.75):
+		im = cv2.resize(im, self.input_shape, self.interpolation=cv2.INTER_NEAREST)
+		im = format_image(im, theano.config.floatX)
+		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
+
+		if not (self._trained and hasattr(self, '_detect_fn')):
+			self._detect_fn = theano.function([self.input], [self.fmap])
+
+		detections = self._detect_fn(swap(im))[0]
+
+		for detection in detections:
+			is_obj = detections[:,:,-self.num_classes:].max(axis=2, keepdims=True) > thresh
+
+		boxes = []
+		for i in range(detections.shape[0]):
+			for j in range(detection.shape[1]):
+				for k in range(detections.shape[2]):
+					coord, score = detections[i,:4,j,k], detections[i,-num_classes:,j,k]
+					if score.max() > thresh:
+						boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
+						
+		return boxes
 	
 	def _build_default_maps(self):
 		'''
