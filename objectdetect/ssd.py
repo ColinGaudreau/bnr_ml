@@ -3,7 +3,8 @@ from theano import tensor as T
 import numpy as np
 import numpy.random as npr
 
-from bnr_ml.utils.helpers import StreamPrinter, mesghrid
+from bnr_ml.utils.helpers import StreamPrinter, meshgrid
+from bnr_ml.utils.nonlinearities import softmax, smooth_abs
 
 from lasagne import layers
 from lasagne.updates import rmsprop
@@ -24,11 +25,11 @@ class SSDSettings(BaseLearningSettings):
 			print_obj=None,
 			update_fn=rmsprop,
 			update_args={'learning_rate': 1e-5},
-			alpha=1.0
+			alpha=1.0,
 			hyperparameters={}
 		):
 		super(SSDSettings, self).__init__()
-		self.get_fn = gen_fn
+		self.gen_fn = gen_fn
 		self.train_annotations = train_annotations
 		self.test_annotations = test_annotations
 		self.train_args = train_args
@@ -63,7 +64,7 @@ class SingleShotDetector(BaseLearningObject):
 		smax=0.95
 	):
 		assert('detection' in network and 'input' in network)
-		
+		super(SingleShotDetector, self).__init__()	
 		self.network = network
 		self.num_classes = num_classes
 		self.ratios = ratios
@@ -89,7 +90,8 @@ class SingleShotDetector(BaseLearningObject):
 
 	def set_params(self, params):
 		net_params = self.get_params()
-		assert(params.__len__() == net_pars.__len__())
+		pdb.set_trace()
+		assert(params.__len__() == net_params.__len__())
 		for p, v in zip(net_params, params):
 			p.set_value(v)
 		return
@@ -98,7 +100,7 @@ class SingleShotDetector(BaseLearningObject):
 	Implement funciton for the BaseLearningObject class
 	'''
 	def get_weights(self):
-		return [p.get_value() for p in self.get_params]
+		return [p.get_value() for p in self.get_params()]
 
 	def get_hyperparameters(self):
 		self._hyperparameters = super(SingleShotDetector, self).get_hyperparameters()
@@ -133,7 +135,7 @@ class SingleShotDetector(BaseLearningObject):
 			ti = time.time()
 			cost = self._get_cost(self.input, self.target, alpha=alpha)
 
-			print_obj.println('Creating cost variable took $.4f seconds' % (time.time() - ti,))
+			print_obj.println('Creating cost variable took %.4f seconds' % (time.time() - ti,))
 
 			parameters = self.get_params()
 			grads = T.grad(cost, parameters)
@@ -257,15 +259,15 @@ class SingleShotDetector(BaseLearningObject):
 			idx_match = T.argmax(iou_default, axis=1)
 
 			# extend truth to cover all cell/box/examples
-			truth_extended = repeat(
-				repeat(
-					repeat(truth.dimshuffle(0,1,'x',2,'x','x'), self.ratios.__len__(), axis=2), 
+			truth_extended = T.repeat(
+				T.repeat(
+					T.repeat(truth.dimshuffle(0,1,'x',2,'x','x'), self.ratios.__len__(), axis=2), 
 					shape[0], axis=4
 				), 
 				shape[1], axis=5
 			)
 
-			idx1, idx2, idx3, idx4 = helpers.meshgrid(
+			idx1, idx2, idx3, idx4 = meshgrid(
 				T.arange(truth.shape[0]),
 				T.arange(self.ratios.__len__()),
 				T.arange(shape[0]),
