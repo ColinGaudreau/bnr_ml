@@ -214,7 +214,7 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 			text += ('Confidence: %.2f' % class_scores[i])
 
 		draw.rectangle(box.tolist(), outline=color)
-		draw.text(box.tolist()[:2], text, fill=color
+		draw.text(box.tolist()[:2], text, fill=color)
 
 	return im
 
