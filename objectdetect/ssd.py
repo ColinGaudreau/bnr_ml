@@ -74,8 +74,9 @@ class SingleShotDetector(BaseLearningObject):
 		self.smin = smin
 		self.smax = smax
 		self.input = network['input'].input_var
-		self.input_shape = network['input'].shape
-		
+		self.input_shape = network['input'].shape[-2:]
+		self._hyperparameters = {'ratios': ratios, 'smin': smin, 'smax': smax}
+
 		# build default map
 		self._build_default_maps()
 		self._build_predictive_maps()
@@ -96,7 +97,6 @@ class SingleShotDetector(BaseLearningObject):
 
 	def set_params(self, params):
 		net_params = self.get_params()
-		pdb.set_trace()
 		assert(params.__len__() == net_params.__len__())
 		for p, v in zip(net_params, params):
 			p.set_value(v)
@@ -177,25 +177,26 @@ class SingleShotDetector(BaseLearningObject):
 		return train_loss, test_loss
 
 	def detect(self, im, thresh=0.75):
-		im = cv2.resize(im, self.input_shape, self.interpolation=cv2.INTER_NEAREST)
+		im = cv2.resize(im, self.input_shape, interpolation=cv2.INTER_NEAREST)
 		im = format_image(im, theano.config.floatX)
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
 
 		if not (self._trained and hasattr(self, '_detect_fn')):
-			self._detect_fn = theano.function([self.input], [self.fmap])
+			self._detect_fn = theano.function([self.input], self._predictive_maps)
 
-		detections = self._detect_fn(swap(im))[0]
+		detections = self._detect_fn(swap(im))
 
-		for detection in detections:
-			is_obj = detections[:,:,-self.num_classes:].max(axis=2, keepdims=True) > thresh
+		#for detection in detections:
+		#	is_obj = detections[:,:,-self.num_classes:].max(axis=2, keepdims=True) > thresh
 
 		boxes = []
-		for i in range(detections.shape[0]):
-			for j in range(detection.shape[1]):
-				for k in range(detections.shape[2]):
-					coord, score = detections[i,:4,j,k], detections[i,-num_classes:,j,k]
-					if score.max() > thresh:
-						boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
+		for detection in detections:
+			for i in range(detection.shape[1]):
+				for j in range(detection.shape[3]):
+					for k in range(detection.shape[4]):
+						coord, score = detection[0,i,:4,j,k], detection[0,i,-self.num_classes:,j,k]
+						if score.max() > thresh:
+							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
 						
 		return boxes
 	
@@ -278,7 +279,7 @@ class SingleShotDetector(BaseLearningObject):
 	
 	def _get_cost(self, input, truth, alpha=1., min_iou=0.5):
 		cost = 0.
-		for i in range(4):
+		for i in range(self._predictive_maps.__len__()):
 			dmap = self._default_maps[i]
 			fmap = self._predictive_maps[i]
 			shape = layers.get_output_shape(self.network['detection'][i])[2:]
@@ -318,18 +319,18 @@ class SingleShotDetector(BaseLearningObject):
 			cost_fmap = 0.
 			cost_fmap += smooth_abs(fmap[:,:,0][iou_gt_min.nonzero()] - truth_extended[:,:,0][iou_gt_min.nonzero()]).sum()
 			cost_fmap += smooth_abs(fmap[:,:,1][iou_gt_min.nonzero()] - truth_extended[:,:,1][iou_gt_min.nonzero()]).sum()
-			cost_fmap += smooth_abs(T.log(fmap[:,:,2] / dmap_extended[:,:,2]) - 
-							   T.log(truth_extended[:,:,2] / dmap_extended[:,:,2])).sum()
-			cost_fmap += smooth_abs(T.log(fmap[:,:,3] / dmap_extended[:,:,3]) - 
-							   T.log(truth_extended[:,:,3] / dmap_extended[:,:,3])).sum()
+			cost_fmap += smooth_abs((T.log(fmap[:,:,2] / dmap_extended[:,:,2]) - 
+							   T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]).sum()
+			cost_fmap += smooth_abs((T.log(fmap[:,:,3] / dmap_extended[:,:,3]) - 
+							   T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]).sum()
 
 			class_cost = -(truth_extended[:,:,-self.num_classes:] * T.log(fmap[:,:,-self.num_classes:])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
-		
-			cost_fmap /= T.maximum(1., iou_gt_min.size)
 			
-			cost += cost_fmap
-		
+			cost_fmap /= T.maximum(1., iou_gt_min[iou_gt_min.nonzero()].size)
+			
+			cost += cost_fmap		
+
 		return cost
 
 

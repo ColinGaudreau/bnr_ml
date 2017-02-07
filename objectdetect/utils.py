@@ -62,7 +62,7 @@ class BoundingBox(object):
 		return BoundingBox(new_xi, new_yi, new_xf, new_yf)
 
 	def tolist(self):
-		return [self.xi, self.yi, self.xf, self.yi]
+		return [self.xi, self.yi, self.xf, self.yf]
 
 	def tondarray(self):
 		return np.asarray([self.xi, self.yi, self.w, self.h])
@@ -188,7 +188,7 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 		im = im.astype(np.uint8)
 	im = Image.fromarray(im)
 
-	if coords.shape[0] == 0:
+	if boxes.__len__() < 1:
 		return im
 
 	draw = ImageDraw.Draw(im)
