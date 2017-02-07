@@ -194,7 +194,7 @@ class SingleShotDetector(BaseLearningObject):
 					coord, score = detections[i,:4,j,k], detections[i,-num_classes:,j,k]
 					if score.max() > thresh:
 						boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
-						
+
 		return boxes
 	
 	def _build_default_maps(self):
@@ -276,7 +276,7 @@ class SingleShotDetector(BaseLearningObject):
 	
 	def _get_cost(self, input, truth, alpha=1., min_iou=0.5):
 		cost = 0.
-		for i in range(4):
+		for i in range(self._predictive_maps.__len__()):
 			dmap = self._default_maps[i]
 			fmap = self._predictive_maps[i]
 			shape = layers.get_output_shape(self.network['detection'][i])[2:]
