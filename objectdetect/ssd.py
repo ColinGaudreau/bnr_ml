@@ -330,7 +330,7 @@ class SingleShotDetector(BaseLearningObject):
 			cost_fmap /= T.maximum(1., iou_gt_min[iou_gt_min.nonzero()].size)
 			
 			cost += cost_fmap		
-
+			pdb.set_trace()
 		return cost
 
 
