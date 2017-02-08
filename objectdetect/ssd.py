@@ -81,7 +81,7 @@ class SingleShotDetector(BaseLearningObject):
 		self._build_default_maps()
 		self._build_predictive_maps()
 
-		self._trained = False
+		self._trained = True
 		self._recompile = True
 
 		return
@@ -119,6 +119,7 @@ class SingleShotDetector(BaseLearningObject):
 
 	def load_model(self, weights):
 		self.set_params(weights)
+		self._build_predictive_maps()
 
 	def train(self):
 		self._trained = True
@@ -193,7 +194,7 @@ class SingleShotDetector(BaseLearningObject):
 			for i in range(detection.shape[1]):
 				for j in range(detection.shape[3]):
 					for k in range(detection.shape[4]):
-						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):,j,k]
+						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
 						if score.max() > thresh:
 							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
 						
@@ -288,7 +289,7 @@ class SingleShotDetector(BaseLearningObject):
 			dmap = self._default_maps[i]
 			fmap = self._predictive_maps[i]
 			shape = layers.get_output_shape(self.network['detection'][i])[2:]
-
+			
 			# get iou between default maps and ground truth
 			iou_default = self._get_iou(dmap.dimshuffle('x','x',0,1,2,3), truth.dimshuffle(0,1,'x',2,'x','x'))
 
@@ -340,16 +341,16 @@ class SingleShotDetector(BaseLearningObject):
 			# Choose index for top boxes whose overlap is smaller than the min overlap.
 			pos_size = iou_gt_min[iou_gt_min.nonzero()].size
 			neg_size = pos_size * 3 # ratio of 3 to 1
-			iou_idx_sorted = iou_idx_sorted[iou_st_min.nonzero()][-neg_size:]
+			iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
 			neg_size = iou_idx_sorted.size
-			
+
 			# Add the negative examples to the costs.
 			neg_class_cost = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
 			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum())
 			
 			# normalize
 			cost_fmap /= T.maximum(1., pos_size + neg_size)
-			
+
 			cost += cost_fmap
 
 		return cost
