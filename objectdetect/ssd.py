@@ -82,6 +82,7 @@ class SingleShotDetector(BaseLearningObject):
 		self._build_predictive_maps()
 
 		self._trained = False
+		self._recompile = True
 
 		return
 	
@@ -192,7 +193,7 @@ class SingleShotDetector(BaseLearningObject):
 			for i in range(detection.shape[1]):
 				for j in range(detection.shape[3]):
 					for k in range(detection.shape[4]):
-						coord, score = detection[0,i,:4,j,k], detection[0,i,-self.num_classes:,j,k]
+						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):,j,k]
 						if score.max() > thresh:
 							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
 						
@@ -244,8 +245,8 @@ class SingleShotDetector(BaseLearningObject):
 			dmap = self._default_maps[i]
 			fmap = layers.get_output(fm)
 			shape = layers.get_output_shape(fm)[2:]
-			fmap = T.reshape(fmap, (-1, self.ratios.__len__(), 4 + self.num_classes) + shape)
-			fmap = T.set_subtensor(fmap[:,:,-self.num_classes:,:,:], softmax(fmap[:,:,-self.num_classes:,:,:], axis=2))
+			fmap = T.reshape(fmap, (-1, self.ratios.__len__(), 4 + (self.num_classes + 1)) + shape)
+			fmap = T.set_subtensor(fmap[:,:,-(self.num_classes + 1):,:,:], softmax(fmap[:,:,-(self.num_classes + 1):,:,:], axis=2))
 			fmap = T.set_subtensor(fmap[:,:,:2,:,:], fmap[:,:,:2,:,:] + dmap[:,:2].dimshuffle('x',0,1,2,3)) # offset due to default box
 			fmap = T.set_subtensor(fmap[:,:,2:4,:,:], smooth_abs(fmap[:,:,2:4,:,:]) * dmap[:,2:].dimshuffle('x',0,1,2,3)) # offset relative to default box width
 			predictive_maps.append(fmap)
@@ -277,6 +278,12 @@ class SingleShotDetector(BaseLearningObject):
 	
 	def _get_cost(self, input, truth, alpha=1., min_iou=0.5):
 		cost = 0.
+		
+		# create ground truth for non-object class
+		neg_example = theano.shared(np.zeros(self.num_classes + 1, dtype=theano.config.floatX))
+		neg_example = T.set_subtensor(neg_example[-1], 1.)
+		neg_example = neg_example.dimshuffle('x','x',0,'x','x')
+		
 		for i in range(self._predictive_maps.__len__()):
 			dmap = self._default_maps[i]
 			fmap = self._predictive_maps[i]
@@ -322,13 +329,27 @@ class SingleShotDetector(BaseLearningObject):
 			cost_fmap += smooth_abs((T.log(fmap[:,:,3] / dmap_extended[:,:,3]) - 
 							   T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]).sum()
 
-			class_cost = -(truth_extended[:,:,-self.num_classes:] * T.log(fmap[:,:,-self.num_classes:])).sum(axis=2)
+			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
 			
-			cost_fmap /= T.maximum(1., iou_gt_min[iou_gt_min.nonzero()].size)
+			# find negative examples
+			iou_default = iou_default.reshape((-1,))
+			iou_idx_sorted = T.argsort(iou_default)[::-1]
+			iou_st_min = iou_default < min_iou
 			
-			cost += cost_fmap		
+			# Choose index for top boxes whose overlap is smaller than the min overlap.
+			pos_size = iou_gt_min[iou_gt_min.nonzero()].size
+			neg_size = pos_size * 3 # ratio of 3 to 1
+			iou_idx_sorted = iou_idx_sorted[iou_st_min.nonzero()][-neg_size:]
+			neg_size = iou_idx_sorted.size
+			
+			# Add the negative examples to the costs.
+			neg_class_cost = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
+			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum())
+			
+			# normalize
+			cost_fmap /= T.maximum(1., pos_size + neg_size)
+			
+			cost += cost_fmap
 
 		return cost
-
-
