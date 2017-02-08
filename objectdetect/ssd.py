@@ -195,6 +195,7 @@ class SingleShotDetector(BaseLearningObject):
 					for k in range(detection.shape[4]):
 						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
 						coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
+						coord[:2] = dmap[i,2:4,j,k] * coord[:2] + dmap[i,:2,j,k]
 						print coord
 						if score.max() > thresh:
 							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
@@ -326,14 +327,11 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# penalize coordinates
 			cost_fmap = 0.
-			cost_fmap += smooth_abs(fmap[:,:,0][iou_gt_min.nonzero()] - truth_extended[:,:,0][iou_gt_min.nonzero()]).sum()
-			cost_fmap += smooth_abs(fmap[:,:,1][iou_gt_min.nonzero()] - truth_extended[:,:,1][iou_gt_min.nonzero()]).sum()
+
+			cost_fmap += smooth_abs(fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2]).sum()
+			cost_fmap += smooth_abs(fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3]).sum()
 			cost_fmap += smooth_abs(fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()].sum()
 			cost_fmap += smooth_abs(fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()].sum()
-			# cost_fmap += smooth_abs((T.log(fmap[:,:,2] / dmap_extended[:,:,2]) - 
-			# 				   T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]).sum()
-			# cost_fmap += smooth_abs((T.log(fmap[:,:,3] / dmap_extended[:,:,3]) - 
-			# 				   T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]).sum()
 
 			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
