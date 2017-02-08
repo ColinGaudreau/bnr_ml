@@ -188,18 +188,18 @@ class SingleShotDetector(BaseLearningObject):
 
 		detections = self._detect_fn(swap(im))
 
-		boxes = []
-
-		for dmap, detection in zip(detections, self._default_maps):
+		boxes, class_scores = [], []
+		for detection, dmap in zip(detections, self._default_maps_asarray):
 			for i in range(detection.shape[1]):
 				for j in range(detection.shape[3]):
 					for k in range(detection.shape[4]):
 						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
 						coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
+						print coord
 						if score.max() > thresh:
 							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
-						
-		return boxes
+							class_scores.append(score.max())
+		return boxes, class_scores
 	
 	def _build_default_maps(self):
 		'''
@@ -207,6 +207,7 @@ class SingleShotDetector(BaseLearningObject):
 		the feature maps
 		'''
 		default_maps = []
+		default_maps_asarray = []
 		fms = self.network['detection']
 		
 		for i, fm in enumerate(fms):
@@ -230,12 +231,14 @@ class SingleShotDetector(BaseLearningObject):
 			for j, ratio in enumerate(self.ratios):
 				fmap[j,2,:,:] = float(ratio[0]) * scale
 				fmap[j,3,:,:] = float(ratio[1]) * scale
-			
+
+			default_maps_asarray.append(fmap)
 			fmap = theano.shared(fmap, name='map_{}'.format(i), borrow=True)
 			default_maps.append(fmap)
 		
 		self._default_maps = default_maps
-	
+		self._default_maps_asarray = default_maps_asarray
+
 	def _build_predictive_maps(self):
 		'''
 		Reshape detection layers and set nonlinearities.
@@ -250,7 +253,6 @@ class SingleShotDetector(BaseLearningObject):
 			fmap = T.reshape(fmap, (-1, self.ratios.__len__(), 4 + (self.num_classes + 1)) + shape)
 			fmap = T.set_subtensor(fmap[:,:,-(self.num_classes + 1):,:,:], softmax(fmap[:,:,-(self.num_classes + 1):,:,:], axis=2))
 			fmap = T.set_subtensor(fmap[:,:,:2,:,:], fmap[:,:,:2,:,:] + dmap[:,:2].dimshuffle('x',0,1,2,3)) # offset due to default box
-			fmap = T.set_subtensor(fmap[:,:,2:4,:,:], T.exp(fmap[:,:,2:4,:,:]) * dmap[:,2:].dimshuffle('x',0,1,2,3)) # offset relative to default box width
 			predictive_maps.append(fmap)
 		
 		self._predictive_maps = predictive_maps
@@ -326,8 +328,8 @@ class SingleShotDetector(BaseLearningObject):
 			cost_fmap = 0.
 			cost_fmap += smooth_abs(fmap[:,:,0][iou_gt_min.nonzero()] - truth_extended[:,:,0][iou_gt_min.nonzero()]).sum()
 			cost_fmap += smooth_abs(fmap[:,:,1][iou_gt_min.nonzero()] - truth_extended[:,:,1][iou_gt_min.nonzero()]).sum()
-			cost_fmap += smooth_abs(fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]).sum()
-			cost_fmap += smooth_abs(fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]).sum()
+			cost_fmap += smooth_abs(fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()].sum()
+			cost_fmap += smooth_abs(fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()].sum()
 			# cost_fmap += smooth_abs((T.log(fmap[:,:,2] / dmap_extended[:,:,2]) - 
 			# 				   T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]).sum()
 			# cost_fmap += smooth_abs((T.log(fmap[:,:,3] / dmap_extended[:,:,3]) - 
