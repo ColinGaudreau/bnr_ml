@@ -29,6 +29,7 @@ class SSDSettings(BaseLearningSettings):
 			update_fn=rmsprop,
 			update_args={'learning_rate': 1e-5},
 			alpha=1.0,
+			min_iou=0.5,
 			hyperparameters={}
 		):
 		super(SSDSettings, self).__init__()
@@ -47,6 +48,7 @@ class SSDSettings(BaseLearningSettings):
 		self.update_fn = update_fn
 		self.update_args = update_args
 		self.alpha = alpha
+		self.min_iou = min_iou
 		self.hyperparameters = {}
 
 	def serialize(self):
@@ -54,6 +56,7 @@ class SSDSettings(BaseLearningSettings):
 		serialization['update_fn'] = self.update_fn.__str__()
 		serialization['update_args'] = self.update_args
 		serialization['alpha'] = self.alpha
+		serialization['min_iou'] = self.min_iou
 		serialization.update(self.hyperparameters)
 		return serialization
 
@@ -134,6 +137,7 @@ class SingleShotDetector(BaseLearningObject):
 		update_fn = self.settings.update_fn
 		update_args = self.settings.update_args
 		alpha = self.settings.alpha
+		min_iou = self.settings.min_iou
 
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			if not hasattr(self, 'target'):
@@ -143,7 +147,7 @@ class SingleShotDetector(BaseLearningObject):
 
 			# get cost
 			ti = time.time()
-			cost = self._get_cost(self.input, self.target, alpha=alpha)
+			cost = self._get_cost(self.input, self.target, alpha=alpha, min_iou=min_iou)
 
 			print_obj.println('Creating cost variable took %.4f seconds' % (time.time() - ti,))
 
@@ -302,7 +306,7 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# get iou between default maps and ground truth
 			iou_default = self._get_iou(dmap.dimshuffle('x','x',0,1,2,3), truth.dimshuffle(0,1,'x',2,'x','x'))
-			
+			#pdb.set_trace()
 			# get which object for which cell
 			idx_match = T.argmax(iou_default, axis=1)
 
@@ -349,8 +353,8 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# Choose index for top boxes whose overlap is smaller than the min overlap.
 			pos_size = iou_gt_min[iou_gt_min.nonzero()].size
-			#neg_size = pos_size * 3 # ratio of 3 to 1
-			neg_size = 100000
+			neg_size = pos_size * 3 # ratio of 3 to 1
+			#neg_size = 10
 			iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
 			neg_size = iou_idx_sorted.size
 
