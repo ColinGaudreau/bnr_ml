@@ -196,10 +196,9 @@ class SingleShotDetector(BaseLearningObject):
 						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
 						coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
 						coord[:2] = dmap[i,2:4,j,k] * coord[:2] + dmap[i,:2,j,k]
-						print coord
 						if score.max() > thresh:
 							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
-							class_scores.append(score.max())
+							class_scores.append(score)
 		return boxes, class_scores
 	
 	def _build_default_maps(self):
@@ -217,8 +216,10 @@ class SingleShotDetector(BaseLearningObject):
 			
 			xcoord, ycoord = np.linspace(0, 1, shape[1] + 1), np.linspace(0, 1, shape[0] + 1)
 			if shape[1] > 1 and shape[1] > 1:
+				# xcoord, ycoord = xcoord[:-1], ycoord[:-1]
 				xcoord, ycoord = (xcoord[:-1] + xcoord[1:])/2, (ycoord[:-1] + ycoord[1:])/2
 			else:
+				# xcoord, ycoord = np.asarray([0.]), np.asarray([0.])
 				xcoord, ycoord = np.asarray([0.5]), np.asarray([0.5])
 	
 			xcoord, ycoord = np.meshgrid(xcoord, ycoord)
@@ -232,6 +233,10 @@ class SingleShotDetector(BaseLearningObject):
 			for j, ratio in enumerate(self.ratios):
 				fmap[j,2,:,:] = float(ratio[0]) * scale
 				fmap[j,3,:,:] = float(ratio[1]) * scale
+			
+			# shift xi, yi
+			fmap[:,0,:,:] -= (fmap[:,2,:,:]/2)
+			fmap[:,1,:,:] -= (fmap[:,3,:,:]/2)
 
 			default_maps_asarray.append(fmap)
 			fmap = theano.shared(fmap, name='map_{}'.format(i), borrow=True)
@@ -253,7 +258,7 @@ class SingleShotDetector(BaseLearningObject):
 			shape = layers.get_output_shape(fm)[2:]
 			fmap = T.reshape(fmap, (-1, self.ratios.__len__(), 4 + (self.num_classes + 1)) + shape)
 			fmap = T.set_subtensor(fmap[:,:,-(self.num_classes + 1):,:,:], softmax(fmap[:,:,-(self.num_classes + 1):,:,:], axis=2))
-			fmap = T.set_subtensor(fmap[:,:,:2,:,:], fmap[:,:,:2,:,:] + dmap[:,:2].dimshuffle('x',0,1,2,3)) # offset due to default box
+			#fmap = T.set_subtensor(fmap[:,:,:2,:,:], fmap[:,:,:2,:,:] + dmap[:,:2].dimshuffle('x',0,1,2,3)) # offset due to default box
 			predictive_maps.append(fmap)
 		
 		self._predictive_maps = predictive_maps
@@ -268,8 +273,9 @@ class SingleShotDetector(BaseLearningObject):
 		S - feature map shape
 		
 		returns mat minus the 4th dimension
-		'''		
-		xi, yi = T.maximum(mat1[:,:,:,0], mat2[:,:,:,0]), T.maximum(mat1[:,:,:,1], mat2[:,:,:,1])
+		'''
+		xi = T.maximum(mat1[:,:,:,0], mat2[:,:,:,0])
+		yi = T.maximum(mat1[:,:,:,1], mat2[:,:,:,1])
 		xf = T.minimum(mat1[:,:,:,[0,2]].sum(axis=3), mat2[:,:,:,[0,2]].sum(axis=3))
 		yf = T.minimum(mat1[:,:,:,[1,3]].sum(axis=3), mat2[:,:,:,[1,3]].sum(axis=3))
 		
@@ -296,7 +302,7 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# get iou between default maps and ground truth
 			iou_default = self._get_iou(dmap.dimshuffle('x','x',0,1,2,3), truth.dimshuffle(0,1,'x',2,'x','x'))
-
+			
 			# get which object for which cell
 			idx_match = T.argmax(iou_default, axis=1)
 
@@ -318,7 +324,7 @@ class SingleShotDetector(BaseLearningObject):
 
 			# copy truth for every cell/box.
 			truth_extended = truth_extended[idx1, idx_match, idx2, :, idx3, idx4].dimshuffle(0,1,4,2,3)
-
+			
 			iou_default = iou_default.max(axis=1)
 
 			iou_gt_min = iou_default >= min_iou
@@ -328,10 +334,10 @@ class SingleShotDetector(BaseLearningObject):
 			# penalize coordinates
 			cost_fmap = 0.
 
-			cost_fmap += smooth_abs(fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2]).sum()
-			cost_fmap += smooth_abs(fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3]).sum()
-			cost_fmap += smooth_abs(fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()].sum()
-			cost_fmap += smooth_abs(fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()].sum()
+			cost_fmap += ((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()]**2).sum()
+			cost_fmap += ((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()]**2).sum()
+			cost_fmap += ((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]**2).sum()
+			cost_fmap += ((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]**2).sum()
 
 			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
@@ -343,7 +349,8 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# Choose index for top boxes whose overlap is smaller than the min overlap.
 			pos_size = iou_gt_min[iou_gt_min.nonzero()].size
-			neg_size = pos_size * 3 # ratio of 3 to 1
+			#neg_size = pos_size * 3 # ratio of 3 to 1
+			neg_size = 100000
 			iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
 			neg_size = iou_idx_sorted.size
 
@@ -353,7 +360,7 @@ class SingleShotDetector(BaseLearningObject):
 			
 			# normalize
 			cost_fmap /= T.maximum(1., pos_size + neg_size)
-
+			
 			cost += cost_fmap
 
 		return cost
