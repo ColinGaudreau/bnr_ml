@@ -345,7 +345,7 @@ class SingleShotDetector(BaseLearningObject):
 
 			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
-			
+
 			# find negative examples
 			iou_default = iou_default.reshape((-1,))
 			iou_idx_sorted = T.argsort(iou_default)[::-1]
@@ -358,9 +358,13 @@ class SingleShotDetector(BaseLearningObject):
 			iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
 			neg_size = iou_idx_sorted.size
 
+			neg_size, pos_size = T.maximum(1., neg_size), T.maximum(1., pos_size)
+
 			# Add the negative examples to the costs.
 			neg_class_cost = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
-			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum())
+
+			cost_fmap /= pos_size
+			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum() / neg_size)
 			
 			# normalize
 			cost_fmap /= T.maximum(1., pos_size + neg_size)
