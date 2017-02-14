@@ -2,6 +2,7 @@ import theano
 from theano import tensor as T
 
 import numpy as np
+import numpy.random as npr
 
 import lasagne
 from lasagne.layers import get_output, get_all_params
@@ -179,27 +180,30 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		
 		return float(train_loss), float(test_loss)
 
-	def _propose_regions(self, im, kvals):
+	def _propose_regions(self, im, kvals, min_size):
 		regions = []
 		dlib.find_candidate_object_locations(im, regions, kvals, min_size)
-		return [BoundingBox(r.left(), r.top(), r.width(), r.height()) for r in rects]
+		return [BoundingBox(r.left(), r.top(), r.right(), r.bottom()) for r in regions]
 
 	def _filter_regions(self, regions, min_w, min_h):
 		return [box for box in regions if box.w > min_w and box.h > min_h and box.isvalid()]
 
 	def _rescale_image(self, im, max_dim):
 		scale = float(max_dim) / (max(im.shape[0], im.shape[1]))
-		new_shape = (int(im.shape[0] * scale), int(im.shape[1] * scale))
+		new_shape = (int(im.shape[1] * scale), int(im.shape[0] * scale))
 		return cv2.resize(im, new_shape, interpolation=cv2.INTER_LINEAR)
 
 	def detect(
+			self,
 			im,
 			thresh=0.5,
 			kvals=(30,200,3),
 			max_dim=600,
 			min_w=10,
 			min_h=10,
-			batch_size=50
+			min_size=100,
+			batch_size=50,
+			max_regions=1000
 		):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
@@ -210,33 +214,38 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		if im.dtype != theano.config.floatX:
 			im = im.astype(theano.config.floatX)
 
-		im = _rescale_image(self, im, max_dim)
+		im = self._rescale_image(im, max_dim)
 
 		# compile detection function if it has not yet been done
 		if self._trained or not hasattr(self, '_detect_fn'):
 			self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
 			self._trained = False
 
-		regions = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h)
+		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
+		if max_regions is not None:
+			max_regions = min(regions.__len__(), max_regions)
+			regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
+		
+		tmp = deepcopy(regions)
 
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 		im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
 
 		for i, box in enumerate(regions):
 			subim = box.subimage(im)
-			subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
+			subim = cv2.resize(subim, self.input_shape[::-1], interpolation=cv2.INTER_NEAREST)
 			im_list[i] = swap(subim)
 
 		# compute scores for the regions
 		if batch_size is not None:
 			class_score, coord = np.zeros((regions.__len__(), self.num_classes + 1)), np.zeros((regions.__len__(), self.num_classes + 1, 4))
 			for i in range(0, regions.__len__(), batch_size):
-				class_score[i:i+batch_size], crd[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
+				class_score[i:i+batch_size], coord[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
 		else:
 			class_score, coord = self._detect_fn(im_list)
 
 		# filter out windows which are 1) not labeled to be an object 2) below threshold
-		class_id = np.argmax(class_score, axis=1)
+		class_id = np.argmax(class_score[:,:-1], axis=1)
 		class_score = class_score[np.arange(class_score.shape[0]), class_id]
 		is_obj = class_score > thresh
 		coord = coord[np.arange(coord.shape[0]), class_id][is_obj]
@@ -248,12 +257,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			coord[i, [0,2]] *= box.w
 			coord[i, [1,3]] *= box.h
 			coord[i, 0] += box.xi
-			coord[i, 1] += box.xf
+			coord[i, 1] += box.yi
 			coord[i, 2:] += coord[i, :2]
-			obj = BoundingBox(*box[i,:].tolist())
+			obj = BoundingBox(*coord[i,:].tolist())
 			objects.append(obj)
 
-		return objects, class_score.tolist(), class_id[is_obj].tolist()
+		return im, tmp, objects, class_score[is_obj].tolist(), class_id[is_obj].tolist()
 
 	# def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
 	# 	if im.shape.__len__() == 2:
