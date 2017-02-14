@@ -1,9 +1,11 @@
 from bnr_ml.objectdetect.utils import BoundingBox
+import copy
 
 def nms(boxes, *args, **kwargs):
 	'''
 	Takes list of BoundingBox objects and does non maximal suppression.
 	'''
+	box = copy.copy(boxes)
 	return _viola_jones(boxes, *args, **kwargs)
 
 def _viola_jones(boxes, overlap=0.4):

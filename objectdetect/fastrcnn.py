@@ -53,15 +53,23 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		self._localize = reshape_loc_layer(get_output(network['localize'], deterministic=False), num_classes)
 		self._localize_test = reshape_loc_layer(get_output(network['localize'], deterministic=True), num_classes)
 
-		params, params_extra = get_all_params(network['detect']), get_all_params(network['localize'])
-		for param in params_extra:
-			if param not in params:
-				params.append(param)
-		self.params = params
-
 		# for detection
 		self._trained = False
 		self._hyperparameters = []
+
+	def get_params(self):
+		params, params_extra = get_all_params(self.network['detect']), get_all_params(self.network['localize'])
+		for param in params_extra:
+			if param not in params:
+				params.append(param)
+		return params
+
+	def set_params(self, params):
+		net_params = self.get_params()
+		assert(params.__len__() == net_params.__len__())
+		for p, v in zip(net_params, params):
+			p.set_value(v)
+		return
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1., eps=1e-4):
 		'''
@@ -79,7 +87,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		return T.mean(cost)
 
 	def get_weights(self):
-		return [p.get_value() for p in self.params]
+		return [p.get_value() for p in self.get_params()]
 
 	def get_hyperparameters(self):
 		return self._hyperparameters
@@ -91,7 +99,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		return architecture
 
 	def load_model(self, weights):
-		return weights
+		self.set_params(weights)
 
 	def train(
 			self,
@@ -135,9 +143,9 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 
 			if lmbda == 0:
-				params = self.params[:-2]
+				params = self.get_params()[:-2]
 			else:
-				params = self.params
+				params = self.get_params()
 			updates = rmsprop(cost, params, learning_rate=lr)
 
 			ti = time.time();
@@ -247,138 +255,138 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		return objects, class_score.tolist(), class_id[is_obj].tolist()
 
-	def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
-		if im.shape.__len__() == 2:
-			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
-		if im.shape[2] > 3:
-			im = im[:,:,:3]
-		if im.max() > 1:
-			im = im / 255.
-		if im.dtype != theano.config.floatX:
-			im = im.astype(theano.config.floatX)
+	# def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
+	# 	if im.shape.__len__() == 2:
+	# 		im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+	# 	if im.shape[2] > 3:
+	# 		im = im[:,:,:3]
+	# 	if im.max() > 1:
+	# 		im = im / 255.
+	# 	if im.dtype != theano.config.floatX:
+	# 		im = im.astype(theano.config.floatX)
 
-		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
-			self._trained = False
+	# 	if self._trained or not hasattr(self, '_detect_fn'):
+	# 		self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
+	# 		self._trained = False
 
-		swap = lambda im: im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX)
+	# 	swap = lambda im: im.reshape((1,) + im.shape).swapaxes(3,2).swapaxes(2,1).astype(theano.config.floatX)
 
-		if proposals is not None:
-			ims = np.zeros((proposals.shape[0],3) + self.input_shape, dtype=theano.config.floatX)
-			cnt = 0
-			regions = []
-			for i in range(proposals.shape[0]):
-				box = BoundingBox(
-					proposals[i, 0],
-					proposals[i, 1],
-					proposals[i, 0] + proposals[i, 2],
-					proposals[i, 1] + proposals[i, 3]
-				)
-				if box.size > 0:
-					subim = box.subimage(im)
-					if np.prod(im.shape) > 0:
-						# this method is waaaaayyyyy faster
-						subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
-						ims[cnt] = swap(subim)
-						regions.append(box)
-						cnt += 1
-			regions = np.asarray(regions)
-			class_score, coord = np.zeros((0,self.num_classes + 1)), np.zeros((0,self.num_classes + 1,4))
+	# 	if proposals is not None:
+	# 		ims = np.zeros((proposals.shape[0],3) + self.input_shape, dtype=theano.config.floatX)
+	# 		cnt = 0
+	# 		regions = []
+	# 		for i in range(proposals.shape[0]):
+	# 			box = BoundingBox(
+	# 				proposals[i, 0],
+	# 				proposals[i, 1],
+	# 				proposals[i, 0] + proposals[i, 2],
+	# 				proposals[i, 1] + proposals[i, 3]
+	# 			)
+	# 			if box.size > 0:
+	# 				subim = box.subimage(im)
+	# 				if np.prod(im.shape) > 0:
+	# 					# this method is waaaaayyyyy faster
+	# 					subim = cv2.resize(subim, self.input_shape, interpolation=cv2.INTER_NEAREST)
+	# 					ims[cnt] = swap(subim)
+	# 					regions.append(box)
+	# 					cnt += 1
+	# 		regions = np.asarray(regions)
+	# 		class_score, coord = np.zeros((0,self.num_classes + 1)), np.zeros((0,self.num_classes + 1,4))
 
-			# use batches to compute window
-			if batch_size is not None:
-				for i in tqdm(range(0, cnt, batch_size)):
-					cs, crd = self._detect_fn(ims[i:i + batch_size])
-					class_score, coord = np.concatenate((class_score, cs), axis=0), np.concatenate((coord, crd), axis=0)
-			else:
-				class_score, coord = self._detect_fn(ims[:cnt])
+	# 		# use batches to compute window
+	# 		if batch_size is not None:
+	# 			for i in tqdm(range(0, cnt, batch_size)):
+	# 				cs, crd = self._detect_fn(ims[i:i + batch_size])
+	# 				class_score, coord = np.concatenate((class_score, cs), axis=0), np.concatenate((coord, crd), axis=0)
+	# 		else:
+	# 			class_score, coord = self._detect_fn(ims[:cnt])
 
-			# format output
-			class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
-			coord = coord[np.arange(coord.shape[0]), class_idx]
-			coord[:,[2,3]] = np.exp(coord[:,[2,3]])
-			class_score, coord, regions = class_score[obj_idx], coord[obj_idx], regions[obj_idx]
+	# 		# format output
+	# 		class_idx, obj_idx = np.argmax(class_score, axis=1), np.max(class_score[:,:-1], axis=1) > thresh
+	# 		coord = coord[np.arange(coord.shape[0]), class_idx]
+	# 		coord[:,[2,3]] = np.exp(coord[:,[2,3]])
+	# 		class_score, coord, regions = class_score[obj_idx], coord[obj_idx], regions[obj_idx]
 			
-			# set correct size of prediction.
-			for i in range(coord.shape[0]):
-				coord[i,[0,2]] *= regions[i].w
-				coord[i,[1,3]] *= regions[i].h
-				coord[i,0] += regions[i].xi
-				coord[i,1] += regions[i].yi
-				coord[i,[0,2]] /= im.shape[1]
-				coord[i,[1,3]] /= im.shape[0]
+	# 		# set correct size of prediction.
+	# 		for i in range(coord.shape[0]):
+	# 			coord[i,[0,2]] *= regions[i].w
+	# 			coord[i,[1,3]] *= regions[i].h
+	# 			coord[i,0] += regions[i].xi
+	# 			coord[i,1] += regions[i].yi
+	# 			coord[i,[0,2]] /= im.shape[1]
+	# 			coord[i,[1,3]] /= im.shape[0]
 			
-			return class_score, coord
-		else:
-			im = resize(im, self.input_shape + (3,))
+	# 		return class_score, coord
+	# 	else:
+	# 		im = resize(im, self.input_shape + (3,))
 
-			preds = self._detect_fn(swap(im).astype(theano.config.floatX))
-			class_score, coord = preds[0][0], preds[1][0]
+	# 		preds = self._detect_fn(swap(im).astype(theano.config.floatX))
+	# 		class_score, coord = preds[0][0], preds[1][0]
 			
-			cls_idx = np.argmax(class_score)
-			coord = coord[cls_idx]
-			coord[[2,3]] = np.exp(coord[[2,3]])
-			return class_score, coord
+	# 		cls_idx = np.argmax(class_score)
+	# 		coord = coord[cls_idx]
+	# 		coord[[2,3]] = np.exp(coord[[2,3]])
+	# 		return class_score, coord
 		
-	@staticmethod
-	def generate_data(
-			annotations,
-			new_size,
-			num_classes,
-			per_batch=2,
-			num_rios=50,
-			min_overlap=.5
-		):
+	# @staticmethod
+	# def generate_data(
+	# 		annotations,
+	# 		new_size,
+	# 		num_classes,
+	# 		per_batch=2,
+	# 		num_rios=50,
+	# 		min_overlap=.5
+	# 	):
 
-		swap_axes = lambda im: im.swapaxes(2,1).swapaxes(1,0)
+	# 	swap_axes = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 
-		for i in range(0,annotations.__len__(),per_batch):
-			X, y = np.zeros((num_rios * per_batch, 3) + new_size), np.zeros((num_rios * per_batch, 4 + (num_classes + 1)))
-			cnt = 0
-			for j in range(min(per_batch, annotations.__len__() - i)):
-				annotation = annotations[i+j]
-				objs = [deepcopy(o) for o in annotation['annotations']]
-				im = imread(annotation['image'])
+	# 	for i in range(0,annotations.__len__(),per_batch):
+	# 		X, y = np.zeros((num_rios * per_batch, 3) + new_size), np.zeros((num_rios * per_batch, 4 + (num_classes + 1)))
+	# 		cnt = 0
+	# 		for j in range(min(per_batch, annotations.__len__() - i)):
+	# 			annotation = annotations[i+j]
+	# 			objs = [deepcopy(o) for o in annotation['annotations']]
+	# 			im = imread(annotation['image'])
 
-				if im.shape.__len__() == 2:
-					im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
-				elif im.shape[2] > 3:
-					im = im[:,:,:3]
-				if im.max() > 1:
-					im = im / 255.
-				if im.dtype != theano.config.floatX:
-					im = im.astype(theano.config.floatX)
+	# 			if im.shape.__len__() == 2:
+	# 				im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+	# 			elif im.shape[2] > 3:
+	# 				im = im[:,:,:3]
+	# 			if im.max() > 1:
+	# 				im = im / 255.
+	# 			if im.dtype != theano.config.floatX:
+	# 				im = im.astype(theano.config.floatX)
 
-				for k in range(num_rios):
-					coord, label = np.zeros(4), np.zeros(num_classes + 1)
-					obj = objs[int(objs.__len__() * np.random.rand())]
-					to_be_localized = np.random.rand() < .5
+	# 			for k in range(num_rios):
+	# 				coord, label = np.zeros(4), np.zeros(num_classes + 1)
+	# 				obj = objs[int(objs.__len__() * np.random.rand())]
+	# 				to_be_localized = np.random.rand() < .5
 
-					if to_be_localized:
-						iou = 0.7 + 0.3 * np.random.rand()
-						label[obj['label']] = 1.
-					else:
-						iou = 0.1 + 0.2 * np.random.rand()
-						label[num_classes] = 1.
-					obj_box = BoundingBox(
-						obj['x'],
-						obj['y'],
-						obj['x'] + obj['w'],
-						obj['y'] + obj['h']
-					)
-					new_box = BoundingBox.gen_randombox(iou, obj_box)
-					if new_box.isvalid():
-						if to_be_localized:
-							coord[0] = (obj_box.xi - new_box.xi) / (new_box.w)
-							coord[1] = (obj_box.yi - new_box.yi) / (new_box.h)
-							coord[2] = 100 * np.log(obj_box.w / new_box.w)
-							coord[3] = 100 * np.log(obj_box.h / new_box.h)
-						new_im = new_box.subimage(im)
-						if np.prod(new_im.shape) > 0:
-							X[cnt] = swap_axes(resize(new_im, new_size))
-							y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
-							cnt += 1
-			yield X[:cnt].astype(theano.config.floatX), y[:cnt].astype(theano.config.floatX)
+	# 				if to_be_localized:
+	# 					iou = 0.7 + 0.3 * np.random.rand()
+	# 					label[obj['label']] = 1.
+	# 				else:
+	# 					iou = 0.1 + 0.2 * np.random.rand()
+	# 					label[num_classes] = 1.
+	# 				obj_box = BoundingBox(
+	# 					obj['x'],
+	# 					obj['y'],
+	# 					obj['x'] + obj['w'],
+	# 					obj['y'] + obj['h']
+	# 				)
+	# 				new_box = BoundingBox.gen_randombox(iou, obj_box)
+	# 				if new_box.isvalid():
+	# 					if to_be_localized:
+	# 						coord[0] = (obj_box.xi - new_box.xi) / (new_box.w)
+	# 						coord[1] = (obj_box.yi - new_box.yi) / (new_box.h)
+	# 						coord[2] = 100 * np.log(obj_box.w / new_box.w)
+	# 						coord[3] = 100 * np.log(obj_box.h / new_box.h)
+	# 					new_im = new_box.subimage(im)
+	# 					if np.prod(new_im.shape) > 0:
+	# 						X[cnt] = swap_axes(resize(new_im, new_size))
+	# 						y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
+	# 						cnt += 1
+	# 		yield X[:cnt].astype(theano.config.floatX), y[:cnt].astype(theano.config.floatX)
 
 def _gen_boxes(imsize, num_pos=20, num_scale=20):
 	x = np.linspace(0, imsize[1], num_pos)
