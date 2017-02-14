@@ -367,7 +367,7 @@ class SingleShotDetector(BaseLearningObject):
 			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum() / neg_size)
 			
 			# normalize
-			cost_fmap /= T.maximum(1., pos_size + neg_size)
+			# cost_fmap /= T.maximum(1., pos_size + neg_size)
 			
 			cost += cost_fmap
 
