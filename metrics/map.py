@@ -1,9 +1,11 @@
 import numpy as np
 from bnr_ml.objectdetect.utils import BoundingBox
+from bnr_ml.helpers.utils import StreamPrinter
+from skimage.io import imread
 
 import pdb
 
-def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=False):
+def average_precision(boxes, scores, labels, min_iou=0.5, return_pr_curve=False):
 	'''
 	Calculate average precision given predictions, labels, class.
 
@@ -14,24 +16,26 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 	labels - list of dictionaries containing labels, this should be restricted to
 		the relevant class.
 	'''
+	assert(boxes.__len__() == scores.__len__())
+
+	boxes, scores = np.asarray(boxes), np.asarray(scores)
+
 	# order predictions in descending order of confidence
-	idx = np.argsort(predictions[:,-1])[::-1]
-	predictions = predictions[idx,:]
+	idx = np.argsort(scores)[::-1]
+	boxes = boxes[idx]
 	num_labels = labels.__len__()
 	was_used = np.zeros(num_labels, dtype=np.bool)
-	tp, fp = np.zeros(predictions.shape[0]), np.zeros(predictions.shape[0])
+	tp, fp = np.zeros(boxes.size), np.zeros(boxes.size)
 
-	for i in range(predictions.shape[0]):
-		pred = predictions[i]
-		pred_box = BoundingBox(pred[0], pred[1], pred[0] + pred[2], pred[1] + pred[3])
+	for i in range(boxes.size):
+		box = boxes[i]
 		best_iou = -np.inf
 		best_label = -1
 		for j, label in enumerate(labels):
 			gt_box = BoundingBox(label['x'], label['y'], label['x'] + label['w'], label['y'] + label['w'])
-			if pred_box.iou(gt_box) > best_iou:
-				best_iou = pred_box.iou(gt_box)
+			if box.iou(gt_box) > best_iou:
+				best_iou = box.iou(gt_box)
 				best_label = j
-				# was_used[j] = False
 
 		if best_iou > min_iou:
 			if not was_used[best_label]:
@@ -60,5 +64,26 @@ def _ap(precision, recall):
 	index = np.asarray([i + 1 for i in range(rec.size - 1) if rec[i] != rec[i+1]])
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
-def map(detector, annotations):
-	pass
+def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
+	aps = []
+	detector_args.update(num_to_label)
+	if verbose:
+		print_obj.println('Beginning mean average precision calculation...')
+	for i, annotation in enumerate(annotations):
+		labels = []
+		predictions = detector(imread(annotation['image']), **detector_args)
+		for key, cls in num_to_label.iteritems():
+			labels = [label for label in annotation['annotations'] if label['label'] == cls]
+			aps.append(average_precision(predictions[cls]['boxes'], predictions[cls]['scores'], labels))
+		if verbose:
+			print_obj.println('Annotation %d complete, mAP so far: %3f' % (i, np.mean(aps)))
+
+	return np.mean(aps)
+
+
+		
+
+	
+
+
+
