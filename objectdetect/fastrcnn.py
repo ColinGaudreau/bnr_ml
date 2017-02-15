@@ -218,7 +218,15 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		# compile detection function if it has not yet been done
 		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_fn = theano.function([self.input], [self._detect_test, self._localize_test])
+			self._detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
+			self._detect_input = theano.shared(self._detect_input_ndarray, name='detection_input', borrow=True)
+
+			self.network['input'].input_var = self._detect_input
+			detection, localization = layers.get_output(self.network['detection'], deterministic=True), layers.get_output(self.network['localization'], deterministic=True)
+			self.network['input'].input_var = self.input
+
+			# need to add stuff to connect all of this
+			self._detect_fn = theano.function([], [detection, localization])
 			self._trained = False
 
 		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
@@ -227,20 +235,35 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
 		
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
+		# im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
 
+		subim_ph = np.zeros((self.input_shape,3), dtype=theano.config.floatX)
+		batch_index = 0
+		class_score = np.zeros((regions.__len__(), self.num_classes + 1), dtype=theano.config.floatX)
+		coord = np.zeros((regions.__len__(), self.num_classes + 1, 4), dtype=theano.config.floatX)
 		for i, box in enumerate(regions):
 			subim = box.subimage(im)
-			subim = cv2.resize(subim, self.input_shape[::-1], interpolation=cv2.INTER_NEAREST)
-			im_list[i] = swap(subim)
+			cv2.resize(subim, self.input_shape[::-1], dst=subim_ph, interpolation=cv2.INTER_NEAREST)
+
+			self._detect_input_ndarray[batch_index] = swap(subim_ph)
+			batch_index += 1
+
+			if batch_index == batch_size:
+				self._detect_input.set_value(self._detect_input_ndarray, borrow=True)
+				class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
+				batch_index = 0
+
+		if batch_index != batch_size:
+			self._detect_input.set_value(self._detect_input_ndarray[:batch_index], borrow=True)
+			class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
 
 		# compute scores for the regions
-		if batch_size is not None:
-			class_score, coord = np.zeros((regions.__len__(), self.num_classes + 1)), np.zeros((regions.__len__(), self.num_classes + 1, 4))
-			for i in range(0, regions.__len__(), batch_size):
-				class_score[i:i+batch_size], coord[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
-		else:
-			class_score, coord = self._detect_fn(im_list)
+		# if batch_size is not None:
+		# 	class_score, coord = np.zeros((regions.__len__(), self.num_classes + 1)), np.zeros((regions.__len__(), self.num_classes + 1, 4))
+		# 	for i in range(0, regions.__len__(), batch_size):
+		# 		class_score[i:i+batch_size], coord[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
+		# else:
+		# 	class_score, coord = self._detect_fn(im_list)
 
 		# filter out windows which are 1) not labeled to be an object 2) below threshold
 		class_id = np.argmax(class_score[:,:-1], axis=1)

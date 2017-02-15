@@ -17,7 +17,6 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 	# order predictions in descending order of confidence
 	idx = np.argsort(predictions[:,-1])[::-1]
 	predictions = predictions[idx,:]
-
 	num_labels = labels.__len__()
 	was_used = np.zeros(num_labels, dtype=np.bool)
 	tp, fp = np.zeros(predictions.shape[0]), np.zeros(predictions.shape[0])
@@ -32,13 +31,14 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 			if pred_box.iou(gt_box) > best_iou:
 				best_iou = pred_box.iou(gt_box)
 				best_label = j
-				was_used[j] = False
+				# was_used[j] = False
 
 		if best_iou > min_iou:
 			if not was_used[best_label]:
 				tp[i] += 1.
 			else:
 				fp[i] += 1.
+			was_used[best_label] = Trues
 		else:
 			fp[i] += 1.
 
@@ -46,14 +46,20 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 	recall = tp / num_labels
 	precision = tp / (tp + fp)
 
-	pdb.set_trace()
-
-	return precision, recall
-	# avg_precision = _ap(precision, recall)
-
+	return _ap(precision, recall), precision, recall
 
 def _ap(precision, recall):
-	return 0
+	prec, rec = np.zeros(precision.size + 2), np.zeros(recall.size + 2)
+	prec[1:-1], rec[1:-1] = precision, recall
+	prec[0], prec[-1] = 0., 0.
+	rec[0], rec[-1] = 0., 1.
+	
+	for i in range(prec.size - 2, -1, -1):
+		prec[i] = max(prec[i], prec[i+1])
+
+	index = np.asarray([i + 1 for i in range(rec.size - 1) if rec[i] != rec[i+1]])
+
+	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
 def map(detector, annotations):
 	pass
