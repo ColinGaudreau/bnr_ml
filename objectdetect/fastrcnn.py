@@ -226,8 +226,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			max_regions = min(regions.__len__(), max_regions)
 			regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
 		
-		tmp = deepcopy(regions)
-
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 		im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
 
@@ -262,7 +260,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			obj = BoundingBox(*coord[i,:].tolist())
 			objects.append(obj)
 
-		return im, tmp, objects, class_score[is_obj].tolist(), class_id[is_obj].tolist()
+		return im, objects, class_score[is_obj].tolist(), class_id[is_obj].tolist()
 
 	# def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
 	# 	if im.shape.__len__() == 2:

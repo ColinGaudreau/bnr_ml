@@ -46,6 +46,8 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 	recall = tp / num_labels
 	precision = tp / (tp + fp)
 
+	pdb.set_trace()
+
 	return precision, recall
 	# avg_precision = _ap(precision, recall)
 
