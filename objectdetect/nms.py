@@ -12,7 +12,7 @@ def _viola_jones(boxes, scores=None, overlap=0.4):
 	'''
 	Non maximal suppression algorithm described in the Viola-Jones paper.
 	'''
-	if score is not None:
+	if scores is not None:
 		return _viola_jones_with_scores(boxes, scores, overlap=overlap)
 
 	regions = []
@@ -61,7 +61,7 @@ def _viola_jones_with_scores(boxes, scores, overlap=0.4):
 				in_region |= box.iou(curr_box) > overlap
 				if in_region:
 					region.append(curr_box)
-					region_scores.append(curr_score)
+					score.append(curr_score)
 					break
 			if in_region:
 				break
@@ -76,7 +76,6 @@ def _viola_jones_with_scores(boxes, scores, overlap=0.4):
 		score_init = score[0] / len(score)
 
 		for box, s in zip(region[1:], score[1:]):
-			box_init = box_init + (box / len(region))
 			box_init += (box / len(region))
 			score_init += (s / len(score))
 
