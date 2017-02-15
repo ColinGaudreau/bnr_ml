@@ -5,7 +5,7 @@ def nms(boxes, *args, **kwargs):
 	'''
 	Takes list of BoundingBox objects and does non maximal suppression.
 	'''
-	box = copy.deepcopy(boxes)
+	boxes = copy.deepcopy(boxes)
 	return _viola_jones(boxes, *args, **kwargs)
 
 def _viola_jones(boxes, scores=None, overlap=0.4):
@@ -46,6 +46,7 @@ def _viola_jones_with_scores(boxes, scores, overlap=0.4):
 	Calculate score for the combined boxes
 	'''
 	assert(boxes.__len__() == scores.__len__())
+	scores = copy.deepcopy(scores)
 	regions = []
 	region_scores = []
 	# split boxes into disjoint sets

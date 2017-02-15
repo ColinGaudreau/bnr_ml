@@ -51,8 +51,8 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		self._detect = get_output(network['detect'], deterministic=False)
 		self._detect_test = get_output(network['detect'], deterministic=True)
-		self._localize = reshape_loc_layer(get_output(network['localize'], deterministic=False), num_classes)
-		self._localize_test = reshape_loc_layer(get_output(network['localize'], deterministic=True), num_classes)
+		self._localize = self._reshape_localization_layer(get_output(network['localize'], deterministic=False))
+		self._localize_test = self._reshape_localization_layer(get_output(network['localize'], deterministic=True))
 
 		# for detection
 		self._trained = False
@@ -71,6 +71,9 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		for p, v in zip(net_params, params):
 			p.set_value(v)
 		return
+	
+	def _reshape_localization_layer(self, localization_layer):
+		return localization_layer.reshape((-1, self.num_classes + 1, 4))
 
 	def _get_cost(self, detection_output, localization_output, target, lmbda=1., eps=1e-4):
 		'''
@@ -213,7 +216,8 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			im = im / 255.
 		if im.dtype != theano.config.floatX:
 			im = im.astype(theano.config.floatX)
-
+		
+		old_size = im.shape[:2]
 		im = self._rescale_image(im, max_dim)
 
 		# compile detection function if it has not yet been done
@@ -222,7 +226,8 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			self._detect_input = theano.shared(self._detect_input_ndarray, name='detection_input', borrow=True)
 
 			self.network['input'].input_var = self._detect_input
-			detection, localization = layers.get_output(self.network['detection'], deterministic=True), layers.get_output(self.network['localization'], deterministic=True)
+			detection = get_output(self.network['detect'], deterministic=True)
+			localization = self._reshape_localization_layer(get_output(self.network['localize'], deterministic=True))
 			self.network['input'].input_var = self.input
 
 			# need to add stuff to connect all of this
@@ -237,7 +242,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
 		# im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
 
-		subim_ph = np.zeros((self.input_shape,3), dtype=theano.config.floatX)
+		subim_ph = np.zeros(self.input_shape + (3,), dtype=theano.config.floatX)
 		batch_index = 0
 		class_score = np.zeros((regions.__len__(), self.num_classes + 1), dtype=theano.config.floatX)
 		coord = np.zeros((regions.__len__(), self.num_classes + 1, 4), dtype=theano.config.floatX)
@@ -253,7 +258,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
 				batch_index = 0
 
-		if batch_index != batch_size:
+		if batch_index != batch_size and batch_index != 0:
 			self._detect_input.set_value(self._detect_input_ndarray[:batch_index], borrow=True)
 			class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
 
@@ -274,6 +279,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		regions = [box for (o,box) in zip(is_obj, regions) if o]
 
 		objects = []
+		scale_factor = (float(old_size[0])/im.shape[0], float(old_size[1])/im.shape[1])
 		for i, box in enumerate(regions):
 			coord[i, [0,2]] *= box.w
 			coord[i, [1,3]] *= box.h
@@ -281,9 +287,10 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			coord[i, 1] += box.yi
 			coord[i, 2:] += coord[i, :2]
 			obj = BoundingBox(*coord[i,:].tolist())
+			obj *= scale_factor
 			objects.append(obj)
 
-		return im, objects, class_score[is_obj].tolist(), class_id[is_obj].tolist()
+		return objects, class_score[is_obj].tolist(), class_id[is_obj].tolist()
 
 	# def detect2(self, im, proposals=None, thresh=.7, batch_size=50):
 	# 	if im.shape.__len__() == 2:

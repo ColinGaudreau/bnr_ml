@@ -38,7 +38,7 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 				tp[i] += 1.
 			else:
 				fp[i] += 1.
-			was_used[best_label] = Trues
+			was_used[best_label] = True
 		else:
 			fp[i] += 1.
 
@@ -46,7 +46,7 @@ def average_precision(predictions, labels, cls, min_iou=0.5, return_pr_curve=Fal
 	recall = tp / num_labels
 	precision = tp / (tp + fp)
 
-	return _ap(precision, recall), precision, recall
+	return _ap(precision, recall)
 
 def _ap(precision, recall):
 	prec, rec = np.zeros(precision.size + 2), np.zeros(recall.size + 2)
@@ -58,7 +58,6 @@ def _ap(precision, recall):
 		prec[i] = max(prec[i], prec[i+1])
 
 	index = np.asarray([i + 1 for i in range(rec.size - 1) if rec[i] != rec[i+1]])
-
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
 def map(detector, annotations):
