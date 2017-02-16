@@ -224,10 +224,9 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		im = self._rescale_image(im, max_dim)
 
 		# compile detection function if it has not yet been done
+		detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
 		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
-			self._detect_input = theano.shared(self._detect_input_ndarray, name='detection_input', borrow=True)
-
+			self._detect_input = theano.shared(detect_input_ndarray, name='detection_input', borrow=True)
 			self.network['input'].input_var = self._detect_input
 			detection = get_output(self.network['detect'], deterministic=True)
 			localization = self._reshape_localization_layer(get_output(self.network['localize'], deterministic=True))
@@ -253,16 +252,16 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			subim = box.subimage(im)
 			cv2.resize(subim, self.input_shape[::-1], dst=subim_ph, interpolation=cv2.INTER_NEAREST)
 
-			self._detect_input_ndarray[batch_index] = swap(subim_ph)
+			detect_input_ndarray[batch_index] = swap(subim_ph)
 			batch_index += 1
 
 			if batch_index == batch_size:
-				self._detect_input.set_value(self._detect_input_ndarray, borrow=True)
+				self._detect_input.set_value(detect_input_ndarray, borrow=True)
 				class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
 				batch_index = 0
 
 		if batch_index != batch_size and batch_index != 0:
-			self._detect_input.set_value(self._detect_input_ndarray[:batch_index], borrow=True)
+			self._detect_input.set_value(detect_input_ndarray[:batch_index], borrow=True)
 			class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
 
 		# compute scores for the regions
@@ -302,7 +301,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		for cls in np.unique(class_id):
 			cls_output = {}
 			cls_idx = class_id == cls
-			boxes, scores = nms(objects[cls_idx], scores=class_score[cls_idx], overlap=overlap)
+			boxes, scores = nms(objects[cls_idx].tolist(), scores=class_score[cls_idx].tolist(), overlap=overlap)
 			cls_output['boxes'] = boxes
 			cls_output['scores'] = scores
 			if num_to_label is not None:
