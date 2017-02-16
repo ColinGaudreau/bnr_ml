@@ -22,6 +22,8 @@ from itertools import tee
 
 from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
+import cv2
+
 import pdb
 
 class YoloSettings(BaseLearningSettings):
@@ -327,7 +329,7 @@ class YoloObjectDetector(BaseLearningObject):
 			im = im.astype(theano.config.floatX)
 
 		old_size = im.shape[:2]
-		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_LINEAR).swapaxes(2,1).swapaxes(1,0)
+		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_LINEAR).swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
 
 		if not hasattr(self, '_detect_fn'):
 			self._detect_fn = theano.function([self.input], self.output_test)
@@ -337,20 +339,22 @@ class YoloObjectDetector(BaseLearningObject):
 		num_classes, S, B = self.num_classes, self.S, self.B
 
 		obj_idx = range(4, output.shape[0] - num_classes, 5)
-		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
+		scores = output[obj_idx] * output[-num_classes:].max(axis=0, keepdims=True)
 		scores_flat = scores.flatten()
 		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > thresh]
-
+		scores_shape = scores.shape
+		
 		boxes, scores, class_ids = [], [], []
 		for i in range(above_thresh_idx.size):
-			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
+			idx = np.unravel_index(above_thresh_idx[i], scores_shape)
 			coord = np.copy(output[idx[0]*5:idx[0]*5 + 4, idx[1], idx[2]])
-			score = np.copy(output[idx[0]*5 + 4:idx[0]*5 + 5] *  output[-self.num_classes:,idx[1], idx[2]])
+			score = np.copy(output[idx[0]*5 + 4:idx[0]*5 + 5, idx[1], idx[2]] *  output[-self.num_classes:,idx[1], idx[2]])
 			coord[0], coord[1] = coord[0] + np.float_(idx[2])/S[1], coord[1] + np.float_(idx[1])/S[0]
-
-			boxes.append(utils.BoundingBox(pred[0], pred[1], pred[0] + pred[2], pred[1] + pred[3]))
+			
+			box = utils.BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]) * tuple(old_size)
+			boxes.append(box)
 			scores.append(score.max())
-			class_ids.append(scores.argmax())
+			class_ids.append(score.argmax())
 
 		# convert to proper format
 		boxes, scores, class_ids = np.asarray(boxes), np.asarray(scores), np.asarray(class_ids)
@@ -360,7 +364,7 @@ class YoloObjectDetector(BaseLearningObject):
 			cls_idx = class_ids == cls
 			b, s = nms(boxes[cls_idx].tolist(), scores=scores[cls_idx].tolist(), overlap=overlap)
 			cls_output['boxes'] = b
-			cls_output['scores'] = scores
+			cls_output['scores'] = s
 			if num_to_label is not None:
 				cls = num_to_label[cls]
 			output[cls] = cls_output
