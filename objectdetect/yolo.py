@@ -7,6 +7,7 @@ from bnr_ml.nnet.layers import AbstractNNetLayer
 from bnr_ml.utils.helpers import meshgrid2D, bitwise_not, StreamPrinter
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
 from bnr_ml.objectdetect import utils
+from bnr_ml.objectdetect.nms import nms
 
 from collections import OrderedDict
 from tqdm import tqdm
@@ -315,6 +316,57 @@ class YoloObjectDetector(BaseLearningObject):
 
 		return train_loss, test_loss
 
+	def detect(self, im, thresh=.5, overlap=.5, num_to_label=None):
+		if im.shape.__len__() == 2:
+			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+		if im.shape[2] > 3:
+			im = im[:,:,:3]
+		if im.max() > 1:
+			im = im / 255.
+		if im.dtype != theano.config.floatX:
+			im = im.astype(theano.config.floatX)
+
+		old_size = im.shape[:2]
+		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_LINEAR).swapaxes(2,1).swapaxes(1,0)
+
+		if not hasattr(self, '_detect_fn'):
+			self._detect_fn = theano.function([self.input], self.output_test)
+
+		output = self._detect_fn(im)[0]
+
+		num_classes, S, B = self.num_classes, self.S, self.B
+
+		obj_idx = range(4, output.shape[0] - num_classes, 5)
+		scores = output[obj_idx] * output[-C:].max(axis=0, keepdims=True)
+		scores_flat = scores.flatten()
+		above_thresh_idx = np.arange(scores_flat.size)[scores_flat > thresh]
+
+		boxes, scores, class_ids = [], [], []
+		for i in range(above_thresh_idx.size):
+			idx = np.unravel_index(above_thresh_idx[i], scores.shape)
+			coord = np.copy(output[idx[0]*5:idx[0]*5 + 4, idx[1], idx[2]])
+			score = np.copy(output[idx[0]*5 + 4:idx[0]*5 + 5] *  output[-self.num_classes:,idx[1], idx[2]])
+			coord[0], coord[1] = coord[0] + np.float_(idx[2])/S[1], coord[1] + np.float_(idx[1])/S[0]
+
+			boxes.append(utils.BoundingBox(pred[0], pred[1], pred[0] + pred[2], pred[1] + pred[3]))
+			scores.append(score.max())
+			class_ids.append(scores.argmax())
+
+		# convert to proper format
+		boxes, scores, class_ids = np.asarray(boxes), np.asarray(scores), np.asarray(class_ids)
+		output = {}
+		for cls in np.unique(class_ids):
+			cls_output = {}
+			cls_idx = class_ids == cls
+			b, s = nms(boxes[cls_idx].tolist(), scores=scores[cls_idx].tolist(), overlap=overlap)
+			cls_output['boxes'] = b
+			cls_output['scores'] = scores
+			if num_to_label is not None:
+				cls = num_to_label[cls]
+			output[cls] = cls_output
+
+		return output
+	
 	@staticmethod
 	def nms(output, S, B, C, thresh=.3, overlap=.2):
 		obj_idx = range(4,output.shape[0] - C, 5)

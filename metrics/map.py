@@ -66,7 +66,8 @@ def _ap(precision, recall):
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
 	aps = []
-	detector_args.update(num_to_label)
+	detector_args.update({'num_to_label': num_to_label})
+	pdb.set_trace()
 	if verbose:
 		print_obj.println('Beginning mean average precision calculation...')
 	for i, annotation in enumerate(annotations):
