@@ -40,6 +40,8 @@ class YoloSettings(BaseLearningSettings):
 			lmbda_coord=5.,
 			lmbda_noobj=0.5,
 			lmbda_obj=1.,
+			min_overlap=1e-5,
+			use_overlap=False,
 			rescore=True,
 			hyperparameters={}
 		):
@@ -61,6 +63,8 @@ class YoloSettings(BaseLearningSettings):
 		self.lmbda_coord = lmbda_coord
 		self.lmbda_noobj = lmbda_noobj
 		self.lmbda_obj = lmbda_obj
+		self.min_overlap = min_overlap
+		self.use_overlap = use_overlap
 		self.rescore = rescore
 		self.hyperparameters = {}
 
@@ -71,6 +75,8 @@ class YoloSettings(BaseLearningSettings):
 		serialization['lmbda_coord'] = self.lmbda_coord
 		serialization['lmbda_noobj'] = self.lmbda_noobj
 		serialization['lmbda_obj'] = self.lmbda_obj
+		serialization['min_overlap'] = self.min_overlap
+		serialization['use_overlap'] = self.use_overlap
 		serialization['rescore'] = self.rescore	
 		serialization.update(self.hyperparameters)
 		return serialization
@@ -116,7 +122,20 @@ class YoloObjectDetector(BaseLearningObject):
 
 		self.params = layers.get_all_params(network['output'])
 
-	def _get_cost(self, output, truth, S, B, C, rescore=False, lmbda_coord=5., lmbda_noobj=0.5, lmbda_obj=1., iou_thresh=1e-5):
+	def _get_cost(
+		self,
+		output,
+		truth,
+		S,
+		B,
+		C,
+		rescore=False,
+		lmbda_coord=5.,
+		lmbda_noobj=0.5,
+		lmbda_obj=1.,
+		min_overlap=1e-5,
+		use_overlap=False
+		):
 		'''
 		Calculates cost for multiple objects in a scene without for loops or scan (so reduces the amount of variable
 		created in the theano computation graph).  A cell is associated with a certain object if the iou of that cell
@@ -124,6 +143,14 @@ class YoloObjectDetector(BaseLearningObject):
 		towards zero.
 
 		Returns the cost and list of variable that I don't want to backpropagate through.
+
+		Params:
+		------
+
+		use_overlap: Yolo, as described in the original paper, assigns a ground truth label if the ground truth box overlaps at all with
+				the cell.  I've found that the result is that with new images with many smaller objects because several objects might be
+				overlap a single cell, this causes a sort of average bounding box which looks pretty bad.  So by using overlap, you don't
+				assign a cell to a ground truth label unless it overlaps by some semi-significant amount.
 		'''
 		
 		# calculate height/width of individual cell
@@ -198,8 +225,11 @@ class YoloObjectDetector(BaseLearningObject):
 
 		# Calculate iou score for the cell.
 		isec = w * h
-		union = (width * height) + (truth_w* truth_h).dimshuffle(0,1,'x','x') - isec
-		iou_cell = T.maximum(isec/union, 0.).dimshuffle(0,1,'x',2,3) # * (np.prod(S)) # normalize the iou to make more sense
+		if not use_overlap:
+			union = (width * height) + (truth_w* truth_h).dimshuffle(0,1,'x','x') - isec
+			iou_cell = T.maximum(isec/union, 0.).dimshuffle(0,1,'x',2,3) # * (np.prod(S)) # normalize the iou to make more sense
+		else:
+			iou_cell = T.maximum(isec / (width * height), 0.).dimshuffle(0,1,'x',2,3)
 		
 		maxval_idx, _ = meshgrid2D(T.arange(iou_cell.shape[1]), T.arange(iou_cell.shape[0]))
 		maxval_idx = maxval_idx.dimshuffle(0,1,'x','x','x')
@@ -208,7 +238,7 @@ class YoloObjectDetector(BaseLearningObject):
 		obj_for_cell = T.eq(maxval_idx, iou_cell.argmax(axis=1).dimshuffle(0,'x',1,2,3))
 			
 		# Get logical matrix representing minimum iou score for cell to be considered overlapping ground truth.
-		cell_intersects = (iou_cell > iou_thresh)
+		cell_intersects = (iou_cell > min_overlap)
 		
 		obj_in_cell_and_resp = T.bitwise_and(T.bitwise_and(cell_intersects, box_is_resp), obj_for_cell)
 		conf_is_zero = T.bitwise_and(
@@ -275,6 +305,8 @@ class YoloObjectDetector(BaseLearningObject):
 		lmbda_coord = self.settings.lmbda_coord
 		lmbda_noobj = self.settings.lmbda_noobj
 		lmbda_obj = self.settings.lmbda_obj
+		min_overlap = self.settings.min_overlap
+		use_overlap = self.settings.use_overlap
 		rescore = self.settings.rescore
 		
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
@@ -283,8 +315,10 @@ class YoloObjectDetector(BaseLearningObject):
 
 			print_obj.println('Getting cost...\n')
 			ti = time.time()
-			cost, constants = self._get_cost(self.output, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
-			cost_test, _ = self._get_cost(self.output_test, self.target, self.S, self.B, self.num_classes, rescore=rescore, lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj)
+			cost, constants = self._get_cost(self.output, self.target, self.S, self.B, self.num_classes, rescore=rescore,
+				lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj, min_overlap=min_overlap, use_overlap=use_overlap)
+			cost_test, _ = self._get_cost(self.output_test, self.target, self.S, self.B, self.num_classes, rescore=rescore,
+				lmbda_coord=lmbda_coord, lmbda_noobj=lmbda_noobj, lmbda_obj=lmbda_obj, min_overlap=min_overlap, use_overlap=use_overlap)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 

@@ -92,7 +92,7 @@ class BoundingBox(object):
 	'''
 
 	def __str__(self):
-		return '(' + str(self.xi) + ',' + str(self.yi) + ') (' + str(self.xf) + ',' + str(self.yf) + ')'
+		return 'BoundingBox([' + str(self.xi) + ',' + str(self.yi) + ',' + str(self.xf) + ',' + str(self.yf) + '])'
 
 	def __repr__(self):
 		return self.__str__()
