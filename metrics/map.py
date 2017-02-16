@@ -1,6 +1,6 @@
 import numpy as np
 from bnr_ml.objectdetect.utils import BoundingBox
-from bnr_ml.helpers.utils import StreamPrinter
+from bnr_ml.utils.helpers import StreamPrinter
 from skimage.io import imread
 
 import pdb
@@ -29,7 +29,7 @@ def average_precision(boxes, scores, labels, min_iou=0.5, return_pr_curve=False)
 
 	for i in range(boxes.size):
 		box = boxes[i]
-		best_iou = -np.inf
+		best_iou = 0.
 		best_label = -1
 		for j, label in enumerate(labels):
 			gt_box = BoundingBox(label['x'], label['y'], label['x'] + label['w'], label['y'] + label['w'])
@@ -47,7 +47,7 @@ def average_precision(boxes, scores, labels, min_iou=0.5, return_pr_curve=False)
 			fp[i] += 1.
 
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
-	recall = tp / num_labels
+	recall = tp / num_labels if num_labels > 0 else tp * 0
 	precision = tp / (tp + fp)
 
 	return _ap(precision, recall)
@@ -67,15 +67,16 @@ def _ap(precision, recall):
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
 	aps = []
 	detector_args.update({'num_to_label': num_to_label})
-	pdb.set_trace()
+	
 	if verbose:
 		print_obj.println('Beginning mean average precision calculation...')
 	for i, annotation in enumerate(annotations):
 		labels = []
-		predictions = detector(imread(annotation['image']), **detector_args)
+		predictions = detector.detect(imread(annotation['image']), **detector_args)
 		for key, cls in num_to_label.iteritems():
 			labels = [label for label in annotation['annotations'] if label['label'] == cls]
-			aps.append(average_precision(predictions[cls]['boxes'], predictions[cls]['scores'], labels))
+			if cls in predictions:
+				aps.append(average_precision(predictions[cls]['boxes'], predictions[cls]['scores'], labels))
 		if verbose:
 			print_obj.println('Annotation %d complete, mAP so far: %3f' % (i, np.mean(aps)))
 
