@@ -122,7 +122,7 @@ class SingleShotDetector(BaseLearningObject):
 
 	def load_model(self, weights):
 		self.set_params(weights)
-		self._build_predictive_maps()
+		# self._build_predictive_maps()
 
 	def train(self):
 		self._trained = True

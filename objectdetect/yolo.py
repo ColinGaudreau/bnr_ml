@@ -290,7 +290,9 @@ class YoloObjectDetector(BaseLearningObject):
 		return architecture
 
 	def load_model(self, weights):
-		layers.set_all_param_values(self.network['output'], weights)
+		if weights is not None:
+			layers.set_all_param_values(self.network['output'], weights)
+		return
 
 	def train(self):
 		# get settings from Yolo settings object
