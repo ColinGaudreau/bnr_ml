@@ -182,7 +182,7 @@ class SingleShotDetector(BaseLearningObject):
 
 		return train_loss, test_loss
 
-	def detect(self, im, thresh=0.75):
+	def detect(self, im, thresh=0.75, num_to_label=None):
 		im = cv2.resize(im, self.input_shape, interpolation=cv2.INTER_NEAREST)
 		im = format_image(im, theano.config.floatX)
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
@@ -192,7 +192,16 @@ class SingleShotDetector(BaseLearningObject):
 
 		detections = self._detect_fn(swap(im))
 
-		boxes, class_scores = [], []
+		output = {}
+		for cls in range(self.num_classes):
+			if num_to_label is not None:
+				cls = num_to_label(cls)
+			output[cls] = {
+				'boxes': [],
+				'scores': []
+			}
+
+		# boxes, class_scores = [], []
 		for detection, dmap in zip(detections, self._default_maps_asarray):
 			for i in range(detection.shape[1]):
 				for j in range(detection.shape[3]):
@@ -201,9 +210,13 @@ class SingleShotDetector(BaseLearningObject):
 						coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
 						coord[:2] = dmap[i,2:4,j,k] * coord[:2] + dmap[i,:2,j,k]
 						if score.max() > thresh:
-							boxes.append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
-							class_scores.append(score)
-		return boxes, class_scores
+							cls = score.argmax()
+							if num_to_label is not None:
+								cls = num_to_label(cls)
+							output[cls]['boxes'].append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
+							output[cls]['scores'].append(score)
+
+		return output
 	
 	def _build_default_maps(self):
 		'''
