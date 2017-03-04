@@ -6,6 +6,7 @@ import numpy.random as npr
 from bnr_ml.utils.helpers import StreamPrinter, meshgrid, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_abs
 from bnr_ml.objectdetect.utils import BoundingBox
+from bnr_ml.objectdetect.nms import nms
 
 from lasagne import layers
 from lasagne.updates import rmsprop
@@ -182,8 +183,9 @@ class SingleShotDetector(BaseLearningObject):
 
 		return train_loss, test_loss
 
-	def detect(self, im, thresh=0.75, num_to_label=None):
-		im = cv2.resize(im, self.input_shape, interpolation=cv2.INTER_NEAREST)
+	def detect(self, im, thresh=0.75, overlap=0.4, num_to_label=None):
+		old_size = im.shape[:2]
+		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_NEAREST)
 		im = format_image(im, theano.config.floatX)
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
 
@@ -195,7 +197,7 @@ class SingleShotDetector(BaseLearningObject):
 		output = {}
 		for cls in range(self.num_classes):
 			if num_to_label is not None:
-				cls = num_to_label(cls)
+				cls = num_to_label[cls]
 			output[cls] = {
 				'boxes': [],
 				'scores': []
@@ -212,9 +214,17 @@ class SingleShotDetector(BaseLearningObject):
 						if score.max() > thresh:
 							cls = score.argmax()
 							if num_to_label is not None:
-								cls = num_to_label(cls)
-							output[cls]['boxes'].append(BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]))
-							output[cls]['scores'].append(score)
+								cls = num_to_label[cls]
+							box = BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]) * old_size
+							output[cls]['boxes'].append(box)
+							output[cls]['scores'].append(score.max())
+	
+		for cls, o in output.iteritems():
+			boxes, scores = nms(o['boxes'], scores=o['scores'], overlap=overlap)
+			output[cls] = {
+				'boxes': boxes,
+				'scores': scores
+			}
 
 		return output
 	

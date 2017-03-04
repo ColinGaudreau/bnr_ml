@@ -182,11 +182,12 @@ class BoundingBox(object):
 		return new_box
 
 def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,255)):
-	if im.max() <= 1:
-		im = im * 255
-	if im.dtype != np.uint8:
-		im = im.astype(np.uint8)
-	im = Image.fromarray(im)
+	if not isinstance(im, Image.Image):
+		if im.max() <= 1:
+			im = im * 255
+		if im.dtype != np.uint8:
+			im = im.astype(np.uint8)
+		im = Image.fromarray(im)
 
 	if boxes.__len__() < 1:
 		return im
@@ -194,7 +195,7 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 	draw = ImageDraw.Draw(im)
 
 	# decide color for labels
-	if class_labels:
+	if class_labels is not None and isinstance(color, tuple):
 		color = {}
 		unique_labels = np.unique(class_labels).tolist()
 		for label in unique_labels:
@@ -213,8 +214,8 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 				text += ', '
 			text += ('Confidence: %.2f' % class_scores[i])
 
-		draw.rectangle(box.tolist(), outline=color)
-		draw.text(box.tolist()[:2], text, fill=color)
+		draw.rectangle(box.tolist(), outline=label_color)
+		draw.text(box.tolist()[:2], text, fill=label_color)
 
 	return im
 
