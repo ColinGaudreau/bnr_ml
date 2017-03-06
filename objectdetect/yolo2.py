@@ -4,7 +4,7 @@ import numpy as np
 
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid2D, bitwise_not, StreamPrinter
+from bnr_ml.utils.helpers import meshgrid, bitwise_not, StreamPrinter
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
@@ -75,7 +75,7 @@ class Yolo2Settings(BaseLearningSettings):
 		serialization.update(self.hyperparameters)
 		return serialization
 
-class Yolo2ObjectDetector(object):
+class Yolo2ObjectDetector(BaseLearningObject):
 	def __init__(
 		self,
 		network,
@@ -92,18 +92,23 @@ class Yolo2ObjectDetector(object):
 		self.output_shape = layers.get_output_shape(network['detection'])[-2:]
 		self.input_shape = network['input'].shape[-2:]
 #		 self._hyperparameters = {'ratios': ratios, 'smin': smin, 'smax': smax}
-
+		
+		
 		# set objectness predictor nonlinearity to sigmoid and
 		# class predictor to softmax
-		output = T.reshape(layers.get_output(network['detection']), (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
-		output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
-		output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
-		self.output = output
+		self.output = self._format_output(layers.get_output(network['detection'], deterministic=False))
+		self.output_test = self._format_output(layers.get_output(network['detection'], deterministic=True))
 		
 		return
+
+	def _format_output(self, output):
+		output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
+                output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
+                output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
+		return output
 	
 	def get_params(self):
-		return layers.get_all_param_values(self.network['detection'])
+		return layers.get_all_params(self.network['detection'])
 
 	def set_params(self, params):
 		layers.set_all_param_values(self.network['detection'], params)
@@ -116,7 +121,7 @@ class Yolo2ObjectDetector(object):
 		return [p.get_value() for p in self.get_params()]
 
 	def get_hyperparameters(self):
-		self._hyperparameters = super(YoloObjectDetector, self).get_hyperparameters()
+		self._hyperparameters = super(Yolo2ObjectDetector, self).get_hyperparameters()
 		curr_hyperparameters = self._hyperparameters[-1]
 		curr_hyperparameters.update({
 			'num_classes': self.num_classes,
@@ -152,19 +157,20 @@ class Yolo2ObjectDetector(object):
 		
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			if not hasattr(self, 'target'):
-				self.target = T.matrix('target')
+				self.target = T.tensor3('target')
 
 			print_obj.println('Getting cost...\n')
 			ti = time.time()
-			cost, constants = self._get_cost(self.output, self.target, self.S, self.B, self.num_classes, rescore=rescore,
+			cost, constants = self._get_cost(self.output, self.target, rescore=rescore,
 				lambda_obj=lambda_obj, lambda_noobj=lambda_noobj, lambda_noobj_coord=lambda_noobj_coord)
-			cost, _ = self._get_cost(self.output_test, self.target, self.S, self.B, self.num_classes, rescore=rescore,
+			cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore,
 				lambda_obj=lambda_obj, lambda_noobj=lambda_noobj, lambda_noobj_coord=lambda_noobj_coord)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
-
-			grads = T.grad(cost, self.params, consider_constant=constants)
-			updates = update_fn(grads, self.params, **update_args)
+			
+			params = self.get_params()
+			grads = T.grad(cost, params, consider_constant=constants)
+			updates = update_fn(grads, params, **update_args)
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
@@ -208,7 +214,7 @@ class Yolo2ObjectDetector(object):
 		cost = 0.
 		
 		# penalize everything, this will be undone if box matches ground truth
-		cost += lambda_noobj_coord * T.mean(output[:,:,:4]**2)
+		#cost += lambda_noobj_coord * T.mean(output[:,:,:4]**2)
 		cost += lambda_noobj * T.mean(output[:,:,4]**2)
 		
 		# get index for each truth
@@ -284,7 +290,7 @@ class Yolo2ObjectDetector(object):
 		# add to cost boxes which have been matched
 		
 		# correct for matched boxes
-		cost -= lambda_noobj_coord * T.mean(output[img_idx, obj_idx, :, :4, row_idx, col_idx][:,match_idx]**2)
+		#cost -= lambda_noobj_coord * T.mean(output[img_idx, obj_idx, :, :4, row_idx, col_idx][:,match_idx]**2)
 		cost -= lambda_noobj * T.mean(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx]**2)
 		
 		# coordinate errors
@@ -304,11 +310,11 @@ class Yolo2ObjectDetector(object):
 		# objectness error
 		if rescore:
 			cost += lambda_obj * T.mean(
-				(output[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx] - iou[:,match_idx])**2
+				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx] - iou[:,match_idx])**2
 			)
 		else:
 			cost += lambda_obj * T.mean(
-				(output[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx])**2
+				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx])**2
 			)
 		
 		# class error
@@ -319,4 +325,4 @@ class Yolo2ObjectDetector(object):
 			)
 		)
 				
-		return cost
+		return cost, [iou]
