@@ -210,6 +210,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			Make theano do all the heavy lifting for detection, this should speed up the process marginally.
 			'''
 			output = self.output_test
+			thresh_var = T.scalar(name='thresh')
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
 
 			# define offsets to predictions
@@ -233,27 +234,32 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
 			cls = T.argmax(output[:,:,-self.num_classes:], axis=2)
 
-			pdb.set_trace()
-
 			# filter out all below thresh
-			above_thresh_idx = conf > thresh
-			coords = output[above_thresh_idx.dimshuffle(0,1,'x',2,3).nonzero()]
-			conf = conf[above_thresh_idx.nonzero()]
-			cls = cls[above_thresh_idx.nonzero()]
+			above_thresh_idx = conf > thresh_var			
+			pred = T.concatenate(
+				(
+					output[:,:,0][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
+					output[:,:,1][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
+					output[:,:,2][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
+					output[:,:,3][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
+					conf[above_thresh_idx.nonzero()].dimshuffle(0,'x'),
+					cls[above_thresh_idx.nonzero()].dimshuffle(0,'x')
+				),
+				axis=1
+			)
+			# pdb.set_trace()
+			self._detect_fn = theano.function([self.input, thresh_var], pred)
 
-			pred = T.concatenate((coords, conf.dimshuffle(0,'x'), cls.dimshuffle(0,'x')), axis=1)
-
-			self._detect_fn = theano.function([self.input], pred)
-
-		output = self._detect_fn(im)[0]
+		output = self._detect_fn(im, thresh)
 
 		boxes = []
 		for i in range(output.shape[0]):
 			coord, conf, cls = output[i,:4], output[i,4], output[i,5]
 			coord[2:] += coord[:2]
 			if num_to_label is not None:
-				cls =num_to_label(cls)
+				cls =num_to_label[cls]
 			box = utils.BoundingBox(*coord.tolist(), confidence=conf, cls=cls)
+			boxes.append(box)
 
 		return boxes
 
@@ -365,7 +371,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		cost += lambda_obj * T.mean(((pred[:,:,:,:4] - truth_boxes[:,:,:,:4])**2)[best_iou_idx.nonzero()])
 				
 		# penalize class scores
-		cost += lambda_obj * T.mean((-truth_boxes[:,:,:,-self.num_classes:] * T.log(pred[:,:,:,-self.num_classes:])).sum(axis=3))
+		cost += lambda_obj * T.mean((-truth_boxes[:,:,:,-self.num_classes:] * T.log(pred[:,:,:,-self.num_classes:])).sum(axis=3)[best_iou_idx[:,:,:,0].nonzero()])
 		
 		# penalize objectness score
 		if rescore:

@@ -21,7 +21,7 @@ class BoundingBox(object):
 		else:
 			self.yi = yi
 			self.yf = yf
-		self.class = cls
+		self.cls = cls
 		self.confidence = confidence
 
 	@property
