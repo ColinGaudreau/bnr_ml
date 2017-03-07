@@ -347,8 +347,9 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			
 			isec = w * h
 			iou = isec / (pred[:,:,:,[2,3]].prod(axis=3) + truth_boxes[:,:,:,[2,3]].prod(axis=3) - isec)
+
+			# make sure iou is considered constant when taking gradient
 			constants.append(iou)
-			pdb.set_trace()
 	
 		# format ground truths correclty
 		truth_boxes = truth_boxes = T.repeat(
@@ -383,7 +384,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# flip all matched and penalize all un-matched objectness scores
 		not_matched_idx = bitwise_not(best_iou_idx[:,:,:,0])
-		pdb.set_trace()		
+
 		# penalize objectness score for non-matched boxes
 		cost += lambda_noobj * T.mean((pred[:,:,:,4]**2)[not_matched_idx.nonzero()])
 				
