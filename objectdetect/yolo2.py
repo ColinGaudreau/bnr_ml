@@ -333,9 +333,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		constants = []
 		if rescore:
 			# scale predictions correctly
+			pdb.set_trace()
 			pred = output.dimshuffle(0,'x',1,2,3,4)
-			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] + x.dimshuffle(0,1,'x',2,3))
-			pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] + y.dimshuffle(0,1,'x',2,3))
+			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] * w_acr + x.dimshuffle(0,1,'x',2,3))
+			pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] * h_acr + y.dimshuffle(0,1,'x',2,3))
 			pred = T.set_subtensor(pred[:,:,:,2], w_acr * T.exp(pred[:,:,:,2]))
 			pred = T.set_subtensor(pred[:,:,:,3], h_acr * T.exp(pred[:,:,:,3]))
 			
@@ -347,7 +348,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			isec = w * h
 			iou = isec / (pred[:,:,:,[2,3]].prod(axis=3) + truth_boxes[:,:,:,[2,3]].prod(axis=3) - isec)
 			constants.append(iou)
-				
+			pdb.set_trace()
+	
 		# format ground truths correclty
 		truth_boxes = truth_boxes = T.repeat(
 			T.repeat(
@@ -381,7 +383,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# flip all matched and penalize all un-matched objectness scores
 		not_matched_idx = bitwise_not(best_iou_idx[:,:,:,0])
-				
+		pdb.set_trace()		
 		# penalize objectness score for non-matched boxes
 		cost += lambda_noobj * T.mean((pred[:,:,:,4]**2)[not_matched_idx.nonzero()])
 				
