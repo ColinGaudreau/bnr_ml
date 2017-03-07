@@ -4,7 +4,7 @@ import numpy as np
 
 from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
-from bnr_ml.utils.helpers import meshgrid, bitwise_not, StreamPrinter
+from bnr_ml.utils.helpers import meshgrid, bitwise_not, StreamPrinter, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
@@ -199,8 +199,63 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		return float(train_loss), float(test_loss)
 
-	def detect(self, im, thresh=0.75):
-		return []
+	def detect(self, im, thresh=0.75, overlap=0.5, num_to_label=None):
+		im = format_image(im, dtype=theano.config.floatX)
+
+		old_size = im.shape[:2]
+		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_LINEAR).swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
+
+		if not hasattr(self, '_detect_fn'):
+			'''
+			Make theano do all the heavy lifting for detection, this should speed up the process marginally.
+			'''
+			output = self.output_test
+			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
+
+			# define offsets to predictions
+			w_cell, h_cell =  1. / self.output_shape[1], 1. / self.output_shape[0]
+			x, y = T.arange(w_cell / 2, 1., w_cell), T.arange(h_cell / 2, 1., h_cell)
+			y, x = meshgrid(x, y)
+
+			x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
+
+			# define scale
+			w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr', borrow=True).dimshuffle('x',0,'x','x')
+			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
+
+			# rescale output
+			output = T.set_subtensor(output[:,:,0], output[:,:,0] * w_acr + x)
+			output = T.set_subtensor(output[:,:,1], output[:,:,1] * h_acr + y)
+			output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
+			output = T.set_subtensor(output[:,:,3], w_acr * T.exp(output[:,:,3]))
+
+			# define confidence in prediction
+			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
+			cls = T.argmax(output[:,:,-self.num_classes:], axis=2)
+
+			pdb.set_trace()
+
+			# filter out all below thresh
+			above_thresh_idx = conf > thresh
+			coords = output[above_thresh_idx.dimshuffle(0,1,'x',2,3).nonzero()]
+			conf = conf[above_thresh_idx.nonzero()]
+			cls = cls[above_thresh_idx.nonzero()]
+
+			pred = T.concatenate((coords, conf.dimshuffle(0,'x'), cls.dimshuffle(0,'x')), axis=1)
+
+			self._detect_fn = theano.function([self.input], pred)
+
+		output = self._detect_fn(im)[0]
+
+		boxes = []
+		for i in range(output.shape[0]):
+			coord, conf, cls = output[i,:4], output[i,4], output[i,5]
+			coord[2:] += coord[:2]
+			if num_to_label is not None:
+				cls =num_to_label(cls)
+			box = utils.BoundingBox(*coord.tolist(), confidence=conf, cls=cls)
+
+		return boxes
 
 	def _get_cost(
 			self,

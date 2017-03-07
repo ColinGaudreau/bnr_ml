@@ -8,7 +8,7 @@ class BoundingBox(object):
 	'''
 	Helper class for managing bounding boxes
 	'''
-	def __init__(self, xi,yi,xf,yf):
+	def __init__(self, xi,yi,xf,yf, cls=None, confidence=-1.):
 		if xi > xf:
 			self.xi = xf
 			self.xf = xi
@@ -21,6 +21,9 @@ class BoundingBox(object):
 		else:
 			self.yi = yi
 			self.yf = yf
+		self.class = cls
+		self.confidence = confidence
+
 	@property
 	def w(self):
 		return self.xf - self.xi
