@@ -103,8 +103,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 	def _format_output(self, output):
 		output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
-				output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
-				output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
+		output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
+		output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
 		return output
 	
 	def get_params(self):
@@ -197,7 +197,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
-		return train_loss, test_loss
+		return float(train_loss), float(test_loss)
 
 	def detect(self, im, thresh=0.75):
 		return []
