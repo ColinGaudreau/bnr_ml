@@ -13,7 +13,7 @@ class Parameter(object):
         self.prior = prior
 
     def __repr__(self):
-        return '{}, Prior: {}'.format(self.value, self.prior)
+        return 'Parameter({}, {})'.format(self.value, self.prior)
 
 class BaseKernel(object):
     def __init__(self, parameters=[]):
@@ -43,7 +43,7 @@ class BaseKernel(object):
         return x[idx1], y[idx2]
 
     def __repr__(self):
-        return '{}, {}'.format(self.__class__, self.parameters.__str__())
+        return 'Kernel({}, {})'.format(self.__class__, self.parameters.__str__())
 
 class SquaredExpKernel(BaseKernel):
     def __init__(self, parameters=[]):
@@ -56,10 +56,20 @@ class SquaredExpKernel(BaseKernel):
 
     def compute_covariance(self, x, y):
         x, y = self._format_vects(x, y)
+        cov = 0
         if self.parameters.__len__() < 2:
-            return np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
+            cov = np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
         else:
-            return self.parameters[1].value * np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
+            cov = self.parameters[1].value * np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
+
+        if self.parameters.__len__() > 2:
+            cov += self.parameters[2].value
+
+        e, _ = np.linalg.eig(cov)
+        if e[e < -1e-3].size > 0:
+            pdb.set_trace()
+
+        return cov
 
 class LinearKernel(BaseKernel):
     def __init__(self):

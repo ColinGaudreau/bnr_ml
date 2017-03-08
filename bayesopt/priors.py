@@ -24,6 +24,9 @@ class GammaPrior(BasePrior):
     def logprob(self, x):
         return -np.log(gamma(self.shape)) - self.scale * np.log(self.scale) + (self.shape - 1) * x - x / self.scale
 
+    def __repr__(self):
+        return 'GammaPrior(shape={}, scale={})'.format(self.shape, self.scale)
+
 class NormalPrior(BasePrior):
     def __init__(self, mean=0., var=0.1):
         self.mean = mean
@@ -31,13 +34,19 @@ class NormalPrior(BasePrior):
         self.support = (-np.inf, np.inf)
 
     def logprob(self, x):
-        return -0.5*np.log(2 * np.pi) - np.log(np.var) - (x - self.mean)**2 / (2 * np.var**2)
+        return -0.5*np.log(2 * np.pi) - np.log(self.var) - (x - self.mean)**2 / (2 * self.var**2)
+
+    def __repr__(self):
+        return 'NormalPrior(mean={}, var={})'.format(self.mean, self.var)
 
 class LogNormalPrior(BasePrior):
-    def __init__(self, mean=0., var=0.1):
+    def __init__(self, mean=0., var=0.1, support=(1e-2, np.inf)):
         self.mean = mean
         self.var = var
-        self.support = (1e-8, np.inf)
+        self.support = support
 
     def logprob(self, x):
         return -0.5*np.log(2 * np.pi) - np.log(self.var) - (np.log(x) - self.mean)**2 / (2 * self.var**2)
+
+    def __repr__(self):
+        return 'LogNormalPrior(mean={}, var={})'.format(self.mean, self.var)
