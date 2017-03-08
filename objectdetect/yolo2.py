@@ -183,7 +183,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, tresh)
+			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
@@ -218,7 +218,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
 			
-			pdb.set_trace()
+			# pdb.set_trace()
 			# define scale
 			w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr', borrow=True).dimshuffle('x',0,'x','x')
 			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
@@ -269,7 +269,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			rescore=True
 		):
 
-		if not hasattr(self, 'self._lambda_obj'):
+		if not hasattr(self, '_lambda_obj'):
 			lambda_obj, lambda_noobj, thresh = T.scalar('lambda_obj'), T.scalar('lambda_noobj'), T.scalar('thresh')
 			self._lambda_obj, self._lambda_noobj, self._thresh = lambda_obj, lambda_noobj, thresh
 		else:
