@@ -219,14 +219,15 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			y, x = meshgrid(x, y)
 
 			x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
-
+			
+			pdb.set_trace()
 			# define scale
 			w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr', borrow=True).dimshuffle('x',0,'x','x')
 			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
 
 			# rescale output
-			output = T.set_subtensor(output[:,:,0], output[:,:,0] * w_acr + x)
-			output = T.set_subtensor(output[:,:,1], output[:,:,1] * h_acr + y)
+			output = T.set_subtensor(output[:,:,0], output[:,:,0] * w_acr + x - w_cell/2)
+			output = T.set_subtensor(output[:,:,1], output[:,:,1] * h_acr + y - h_cell/2)
 			output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
 			output = T.set_subtensor(output[:,:,3], w_acr * T.exp(output[:,:,3]))
 
@@ -247,7 +248,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 				),
 				axis=1
 			)
-			# pdb.set_trace()
+			
 			self._detect_fn = theano.function([self.input, thresh_var], pred)
 
 		output = self._detect_fn(im, thresh)
@@ -333,7 +334,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		constants = []
 		if rescore:
 			# scale predictions correctly
-			pdb.set_trace()
 			pred = output.dimshuffle(0,'x',1,2,3,4)
 			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] * w_acr + x.dimshuffle(0,1,'x',2,3))
 			pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] * h_acr + y.dimshuffle(0,1,'x',2,3))
