@@ -262,7 +262,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		return boxes
 
-	def _get_cost(
+	def _get_cost2(
 			self,
 			output,
 			truth,
@@ -389,127 +389,131 @@ class Yolo2ObjectDetector(BaseLearningObject):
 				
 		return cost, constants
 
-	# def _get_cost(
-	# 		self,
-	# 		output,
-	# 		truth,
-	# 		lambda_obj=5.,
-	# 		lambda_noobj=1.,
-	# 		lambda_noobj_coord = 1.,
-	# 		rescore=True
-	# 	):
-	# 	cost = 0.
-		
-	# 	# penalize everything, this will be undone if box matches ground truth
-	# 	#cost += lambda_noobj_coord * T.mean(output[:,:,:4]**2)
-	# 	cost += lambda_noobj * T.mean(output[:,:,4]**2)
-		
-	# 	# get index for each truth
-	# 	row_idx = T.cast(T.floor((truth[:,:,0] + 0.5 * truth[:,:,2]) * self.output_shape[1]), 'int32')
-	# 	col_idx = T.cast(T.floor((truth[:,:,1] + 0.5 * truth[:,:,3]) * self.output_shape[0]), 'int32')
-				
-	# 	# image index
-	# 	img_idx = T.repeat(T.arange(truth.shape[0]).dimshuffle(0,'x'), truth.shape[1], axis=1)
-		
-	# 	# index for each object in an image
-	# 	obj_idx = T.repeat(T.arange(truth.shape[1]), truth.shape[0], axis=0)
-		
-	# 	# reshape to flat
-	# 	row_idx = row_idx.reshape((-1,))
-	# 	col_idx = col_idx.reshape((-1,))
-	# 	img_idx = img_idx.reshape((-1,))
-	# 	obj_idx = obj_idx.reshape((-1,))
-		
-	# 	# use only valid indices (i.e. greater or equal to zero)
-	# 	valid_idx = T.bitwise_and(row_idx >= 0, col_idx >= 0).reshape((-1,))
-	# 	row_idx = row_idx[valid_idx.nonzero()]
-	# 	col_idx = col_idx[valid_idx.nonzero()]
-	# 	img_idx = img_idx[valid_idx.nonzero()]
-	# 	obj_idx = obj_idx[valid_idx.nonzero()]
-				
-	# 	# reshape output and truth
-	# 	output = output.dimshuffle(0,'x',1,2,3,4)
-	# 	truth = truth.dimshuffle(0,1,'x',2,'x','x')
-		
-	# 	output = T.repeat(output, truth.shape[1], axis=1)
-	# 	truth = T.repeat(truth, self.boxes.__len__(), axis=2)
-	# 	truth = T.repeat(T.repeat(truth, self.output_shape[0], axis=4), self.output_shape[1], axis=5)
-		
-	# 	# reformat ground truth labels so that they are relative to offsets
-	# 	# and that the width/height are log scale relative to the box height.
-		
-	# 	# add offset to the x,y coordinates
-	# 	x_diff, y_diff = 1./self.output_shape[0], 1./self.output_shape[1]
-	# 	y, x = meshgrid(T.arange(0 + x_diff/2,1,x_diff), T.arange(0 + y_diff/2,1,y_diff))
-	# 	x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
-		
-	# 	# scaling from each anchor box
-	# 	x_scale = theano.shared(np.asarray([b[0] for b in self.boxes]), name='x_scale', borrow=True).dimshuffle('x',0,'x','x')
-	# 	y_scale = theano.shared(np.asarray([b[1] for b in self.boxes]), name='y_scale', borrow=True).dimshuffle('x',0,'x','x')
+	def _get_cost(
+			self,
+			output,
+			truth,
+			rescore=True
+		):
 
-	# 	# reformat truth
-	# 	truth = T.set_subtensor(truth[:,:,:,0,:,:], truth[:,:,:,0,:,:] - x)
-	# 	truth = T.set_subtensor(truth[:,:,:,1,:,:], truth[:,:,:,1,:,:] - y)
-	# 	truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
-	# 	truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
+		if not hasattr(self, '_lambda_obj'):
+			lambda_obj, lambda_noobj, thresh = T.scalar('lambda_obj'), T.scalar('lambda_noobj'), T.scalar('thresh')
+			self._lambda_obj, self._lambda_noobj, self._thresh = lambda_obj, lambda_noobj, thresh
+		else:
+			lambda_obj, lambda_noobj, thresh = self._lambda_obj, self._lambda_noobj, self._thresh
+
+		cost = 0.
+		
+		# penalize everything, this will be undone if box matches ground truth
+		#cost += lambda_noobj_coord * T.mean(output[:,:,:4]**2)
+		cost += lambda_noobj * T.mean(output[:,:,4]**2)
+		
+		# get index for each truth
+		row_idx = T.cast(T.floor((truth[:,:,0] + 0.5 * truth[:,:,2]) * self.output_shape[1]), 'int32')
+		col_idx = T.cast(T.floor((truth[:,:,1] + 0.5 * truth[:,:,3]) * self.output_shape[0]), 'int32')
+				
+		# image index
+		img_idx = T.repeat(T.arange(truth.shape[0]).dimshuffle(0,'x'), truth.shape[1], axis=1)
+		
+		# index for each object in an image
+		obj_idx = T.repeat(T.arange(truth.shape[1]), truth.shape[0], axis=0)
+		
+		# reshape to flat
+		row_idx = row_idx.reshape((-1,))
+		col_idx = col_idx.reshape((-1,))
+		img_idx = img_idx.reshape((-1,))
+		obj_idx = obj_idx.reshape((-1,))
+		
+		# use only valid indices (i.e. greater or equal to zero)
+		valid_idx = T.bitwise_and(row_idx >= 0, col_idx >= 0).reshape((-1,))
+		row_idx = row_idx[valid_idx.nonzero()]
+		col_idx = col_idx[valid_idx.nonzero()]
+		img_idx = img_idx[valid_idx.nonzero()]
+		obj_idx = obj_idx[valid_idx.nonzero()]
+				
+		# reshape output and truth
+		output = output.dimshuffle(0,'x',1,2,3,4)
+		truth = truth.dimshuffle(0,1,'x',2,'x','x')
+		
+		output = T.repeat(output, truth.shape[1], axis=1)
+		truth = T.repeat(truth, self.boxes.__len__(), axis=2)
+		truth = T.repeat(T.repeat(truth, self.output_shape[0], axis=4), self.output_shape[1], axis=5)
+		
+		# reformat ground truth labels so that they are relative to offsets
+		# and that the width/height are log scale relative to the box height.
+		
+		# add offset to the x,y coordinates
+		x_diff, y_diff = 1./self.output_shape[0], 1./self.output_shape[1]
+		y, x = meshgrid(T.arange(0 + x_diff/2,1,x_diff), T.arange(0 + y_diff/2,1,y_diff))
+		x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
+		
+		# scaling from each anchor box
+		x_scale = theano.shared(np.asarray([b[0] for b in self.boxes]), name='x_scale', borrow=True).dimshuffle('x',0,'x','x')
+		y_scale = theano.shared(np.asarray([b[1] for b in self.boxes]), name='y_scale', borrow=True).dimshuffle('x',0,'x','x')
+
+		# reformat truth
+		truth = T.set_subtensor(truth[:,:,:,0,:,:], truth[:,:,:,0,:,:] - x)
+		truth = T.set_subtensor(truth[:,:,:,1,:,:], truth[:,:,:,1,:,:] - y)
+		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
+		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
 	
 		
-	# 	# determine iou of chosen boxes
-	# 	xi = T.maximum(output[img_idx, obj_idx, :, 0, row_idx, col_idx], truth[img_idx, obj_idx, :, 0, row_idx, col_idx])
-	# 	yi = T.maximum(output[img_idx, obj_idx, :, 1, row_idx, col_idx], truth[img_idx, obj_idx, :, 1, row_idx, col_idx])
-	# 	xf = T.minimum(
-	# 		output[img_idx, obj_idx, :, 0, row_idx, col_idx] + output[img_idx, obj_idx, :, 2, row_idx, col_idx],
-	# 		truth[img_idx, obj_idx, :, 0, row_idx, col_idx] + truth[img_idx, obj_idx, :, 2, row_idx, col_idx]
-	# 	)
-	# 	yf = T.minimum(
-	# 		output[img_idx, obj_idx, :, 1, row_idx, col_idx] + output[img_idx, obj_idx, :, 3, row_idx, col_idx],
-	# 		truth[img_idx, obj_idx, :, 1, row_idx, col_idx] + truth[img_idx, obj_idx, :, 3, row_idx, col_idx]
-	# 	)
-	# 	w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
+		# determine iou of chosen boxes
+		xi = T.maximum(output[img_idx, obj_idx, :, 0, row_idx, col_idx], truth[img_idx, obj_idx, :, 0, row_idx, col_idx])
+		yi = T.maximum(output[img_idx, obj_idx, :, 1, row_idx, col_idx], truth[img_idx, obj_idx, :, 1, row_idx, col_idx])
+		xf = T.minimum(
+			output[img_idx, obj_idx, :, 0, row_idx, col_idx] + output[img_idx, obj_idx, :, 2, row_idx, col_idx],
+			truth[img_idx, obj_idx, :, 0, row_idx, col_idx] + truth[img_idx, obj_idx, :, 2, row_idx, col_idx]
+		)
+		yf = T.minimum(
+			output[img_idx, obj_idx, :, 1, row_idx, col_idx] + output[img_idx, obj_idx, :, 3, row_idx, col_idx],
+			truth[img_idx, obj_idx, :, 1, row_idx, col_idx] + truth[img_idx, obj_idx, :, 3, row_idx, col_idx]
+		)
+		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
 		
-	# 	isec = w * h
-	# 	iou = isec / (output[img_idx, obj_idx, :, 2, row_idx, col_idx] * output[img_idx, obj_idx, :, 3, row_idx, col_idx] + \
-	# 				truth[img_idx, obj_idx, :, 2, row_idx, col_idx] * truth[img_idx, obj_idx, :, 3, row_idx, col_idx] - isec)
+		isec = w * h
+		iou = isec / (output[img_idx, obj_idx, :, 2, row_idx, col_idx] * output[img_idx, obj_idx, :, 3, row_idx, col_idx] + \
+					truth[img_idx, obj_idx, :, 2, row_idx, col_idx] * truth[img_idx, obj_idx, :, 3, row_idx, col_idx] - isec)
 					 
-	# 	# get index for matched boxes
-	# 	match_idx = T.argmax(iou, axis=1)
+		# get index for matched boxes
+		match_idx = T.argmax(iou, axis=1)
 		
-	# 	# add to cost boxes which have been matched
+		# add to cost boxes which have been matched
 		
-	# 	# correct for matched boxes
-	# 	#cost -= lambda_noobj_coord * T.mean(output[img_idx, obj_idx, :, :4, row_idx, col_idx][:,match_idx]**2)
-	# 	cost -= lambda_noobj * T.mean(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx]**2)
+		# correct for matched boxes
+		#cost -= lambda_noobj_coord * T.mean(output[img_idx, obj_idx, :, :4, row_idx, col_idx][:,match_idx]**2)
+		cost -= lambda_noobj * T.mean(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx]**2)
 		
-	# 	# coordinate errors
-	# 	cost += lambda_obj * T.mean(
-	# 		(output[img_idx, obj_idx, :, 0, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 0, row_idx, col_idx][:,match_idx])**2
-	# 	)
-	# 	cost += lambda_obj * T.mean(
-	# 		(output[img_idx, obj_idx, :, 1, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 1, row_idx, col_idx][:,match_idx])**2
-	# 	)
-	# 	cost += lambda_obj * T.mean(
-	# 		(output[img_idx, obj_idx, :, 2, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 2, row_idx, col_idx][:,match_idx])**2
-	# 	)
-	# 	cost += lambda_obj * T.mean(
-	# 		(output[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx])**2
-	# 	)
+		# coordinate errors
+		cost += lambda_obj * T.mean(
+			(output[img_idx, obj_idx, :, 0, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 0, row_idx, col_idx][:,match_idx])**2
+		)
+		cost += lambda_obj * T.mean(
+			(output[img_idx, obj_idx, :, 1, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 1, row_idx, col_idx][:,match_idx])**2
+		)
+		cost += lambda_obj * T.mean(
+			(output[img_idx, obj_idx, :, 2, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 2, row_idx, col_idx][:,match_idx])**2
+		)
+		cost += lambda_obj * T.mean(
+			(output[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx] - truth[img_idx, obj_idx, :, 3, row_idx, col_idx][:,match_idx])**2
+		)
 		
-	# 	# objectness error
-	# 	if rescore:
-	# 		cost += lambda_obj * T.mean(
-	# 			(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx] - iou[:,match_idx])**2
-	# 		)
-	# 	else:
-	# 		cost += lambda_obj * T.mean(
-	# 			(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx])**2
-	# 		)
+		# objectness error
+		if rescore:
+			cost += lambda_obj * T.mean(
+				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx] - iou[:,match_idx])**2
+			)
+		else:
+			cost += lambda_obj * T.mean(
+				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx])**2
+			)
 		
-	# 	# class error
-	# 	cost += lambda_obj * T.mean(
-	# 		(
-	# 			-truth[img_idx, obj_idx, :, -self.num_classes:, row_idx, col_idx][:,match_idx] * \
-	# 			T.log(output[img_idx, obj_idx, :, -self.num_classes:, row_idx, col_idx][:,match_idx])
-	# 		)
-	# 	)
+		# class error
+		cost += lambda_obj * T.mean(
+			(
+				-truth[img_idx, obj_idx, :, -self.num_classes:, row_idx, col_idx][:,match_idx] * \
+				T.log(output[img_idx, obj_idx, :, -self.num_classes:, row_idx, col_idx][:,match_idx])
+			)
+		)
 				
-	# 	return cost, [iou]
+		return cost, [iou]
