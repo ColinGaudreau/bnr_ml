@@ -140,7 +140,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			self.set_params(weights)
 		return
 
-	def train(self):
+	def train(self, recompile=False):
 		# get settings from Yolo settings object
 		gen_fn = self.settings.gen_fn
 		train_annotations = self.settings.train_annotations
@@ -155,16 +155,14 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		thresh = self.settings.thresh
 		rescore = self.settings.rescore
 		
-		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
+		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn') or recompile:
 			if not hasattr(self, 'target'):
 				self.target = T.tensor3('target')
 
 			print_obj.println('Getting cost...\n')
 			ti = time.time()
-			cost, constants = self._get_cost(self.output, self.target, rescore=rescore,
-				lambda_obj=lambda_obj, lambda_noobj=lambda_noobj, thresh=thresh)
-			cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore,
-				lambda_obj=lambda_obj, lambda_noobj=lambda_noobj, thresh=thresh)
+			cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
+			cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 			
@@ -174,8 +172,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
-			self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
-			self._test_fn = theano.function([self.input, self.target], cost_test)
+			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 
@@ -185,12 +183,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch)
+			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, tresh)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
@@ -268,11 +266,15 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			self,
 			output,
 			truth,
-			lambda_obj=5.,
-			lambda_noobj=.5,
-			thresh=0.8,
 			rescore=True
 		):
+
+		if not hasattr(self, 'self._lambda_obj'):
+			lambda_obj, lambda_noobj, thresh = T.scalar('lambda_obj'), T.scalar('lambda_noobj'), T.scalar('thresh')
+			self._lambda_obj, self._lambda_noobj, self._thresh = lambda_obj, lambda_noobj, thresh
+		else:
+			lambda_obj, lambda_noobj, thresh = self._lambda_obj, self._lambda_noobj, self._thresh
+
 		cost = 0.
 		
 		# create grid for cells
@@ -355,9 +357,9 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		truth_boxes = truth_boxes = T.repeat(
 			T.repeat(
 				T.repeat(truth_boxes, self.boxes.__len__(), axis=2),
-				self.output_shape[0], axis=4),
+				self.output_shape[0], axis=4
+			),
 			self.output_shape[1], axis=5
-		
 		)
 		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,0], (truth_boxes[:,:,:,0] - anchors[:,:,:,0]) / anchors[:,:,:,2])
 		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,1], (truth_boxes[:,:,:,1] - anchors[:,:,:,1]) / anchors[:,:,:,3])
@@ -366,24 +368,21 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# add dimension for objects per image
 		pred = T.repeat(output.dimshuffle(0,'x',1,2,3,4), truth.shape[1], axis=1)
-
-		# add dimension for each predicted value
-		best_iou_idx = best_iou_idx.dimshuffle(0,1,2,'x',3,4)
 				
 		# penalize coordinates
-		cost += lambda_obj * T.mean(((pred[:,:,:,:4] - truth_boxes[:,:,:,:4])**2)[best_iou_idx.nonzero()])
+		cost += lambda_obj * T.mean(((pred[:,:,:,:4] - truth_boxes[:,:,:,:4])**2).sum(axis=3)[best_iou_idx.nonzero()])
 				
 		# penalize class scores
-		cost += lambda_obj * T.mean((-truth_boxes[:,:,:,-self.num_classes:] * T.log(pred[:,:,:,-self.num_classes:])).sum(axis=3)[best_iou_idx[:,:,:,0].nonzero()])
+		cost += lambda_obj * T.mean((-truth_boxes[:,:,:,-self.num_classes:] * T.log(pred[:,:,:,-self.num_classes:])).sum(axis=3)[best_iou_idx.nonzero()])
 		
 		# penalize objectness score
 		if rescore:
-			cost += lambda_obj * T.mean(((pred[:,:,:,4] - iou)**2)[best_iou_idx[:,:,:,0].nonzero()])
+			cost += lambda_obj * T.mean(((pred[:,:,:,4] - iou)**2)[best_iou_idx.nonzero()])
 		else:
-			cost += lambda_obj * T.mean(((pred[:,:,:,4] - 1.)**2)[best_iou_idx[:,:,:,0].nonzero()])
+			cost += lambda_obj * T.mean(((pred[:,:,:,4] - 1.)**2)[best_iou_idx.nonzero()])
 		
 		# flip all matched and penalize all un-matched objectness scores
-		not_matched_idx = bitwise_not(best_iou_idx[:,:,:,0])
+		not_matched_idx = bitwise_not(best_iou_idx)
 
 		# penalize objectness score for non-matched boxes
 		cost += lambda_noobj * T.mean((pred[:,:,:,4]**2)[not_matched_idx.nonzero()])
