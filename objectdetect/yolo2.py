@@ -172,8 +172,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
-			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
-			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
+			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
+			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
+			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 
@@ -183,12 +185,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh)
+			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh))
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
@@ -452,10 +454,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		y_scale = theano.shared(np.asarray([b[1] for b in self.boxes]), name='y_scale', borrow=True).dimshuffle('x',0,'x','x')
 
 		# reformat truth
-		truth = T.set_subtensor(truth[:,:,:,0,:,:], truth[:,:,:,0,:,:] - x)
-		truth = T.set_subtensor(truth[:,:,:,1,:,:], truth[:,:,:,1,:,:] - y)
+		truth = T.set_subtensor(truth[:,:,:,0,:,:], (truth[:,:,:,0,:,:] - x) / x_scale)
+		truth = T.set_subtensor(truth[:,:,:,1,:,:], (truth[:,:,:,1,:,:] - y) / y_scale)
 		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
-		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
+		truth = T.set_subtensor(truth[:,:,:,3,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
 	
 		
 		# determine iou of chosen boxes
