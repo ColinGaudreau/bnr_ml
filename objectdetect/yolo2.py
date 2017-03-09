@@ -453,32 +453,37 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		x_scale = theano.shared(np.asarray([b[0] for b in self.boxes]), name='x_scale', borrow=True).dimshuffle('x',0,'x','x')
 		y_scale = theano.shared(np.asarray([b[1] for b in self.boxes]), name='y_scale', borrow=True).dimshuffle('x',0,'x','x')
 
-		# reformat truth
-		truth = T.set_subtensor(truth[:,:,:,0,:,:], (truth[:,:,:,0,:,:] - x) / x_scale)
-		truth = T.set_subtensor(truth[:,:,:,1,:,:], (truth[:,:,:,1,:,:] - y) / y_scale)
-		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
-		truth = T.set_subtensor(truth[:,:,:,3,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
-	
+		# change predicted output to proper scale
+		pred = T.set_subtensor(output[:,:,:,0], output[:,:,:,0] * x_scale + x)
+		pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] * y_scale + y)
+		pred = T.set_subtensor(pred[:,:,:,2], x_scale * T.exp(pred[:,:,:,2]))
+		pred = T.set_subtensor(pred[:,:,:,3], y_scale * T.exp(pred[:,:,:,3]))
 		
 		# determine iou of chosen boxes
-		xi = T.maximum(output[img_idx, obj_idx, :, 0, row_idx, col_idx], truth[img_idx, obj_idx, :, 0, row_idx, col_idx])
-		yi = T.maximum(output[img_idx, obj_idx, :, 1, row_idx, col_idx], truth[img_idx, obj_idx, :, 1, row_idx, col_idx])
+		xi = T.maximum(pred[img_idx, obj_idx, :, 0, row_idx, col_idx], truth[img_idx, obj_idx, :, 0, row_idx, col_idx])
+		yi = T.maximum(pred[img_idx, obj_idx, :, 1, row_idx, col_idx], truth[img_idx, obj_idx, :, 1, row_idx, col_idx])
 		xf = T.minimum(
-			output[img_idx, obj_idx, :, 0, row_idx, col_idx] + output[img_idx, obj_idx, :, 2, row_idx, col_idx],
+			pred[img_idx, obj_idx, :, 0, row_idx, col_idx] + pred[img_idx, obj_idx, :, 2, row_idx, col_idx],
 			truth[img_idx, obj_idx, :, 0, row_idx, col_idx] + truth[img_idx, obj_idx, :, 2, row_idx, col_idx]
 		)
 		yf = T.minimum(
-			output[img_idx, obj_idx, :, 1, row_idx, col_idx] + output[img_idx, obj_idx, :, 3, row_idx, col_idx],
+			pred[img_idx, obj_idx, :, 1, row_idx, col_idx] + pred[img_idx, obj_idx, :, 3, row_idx, col_idx],
 			truth[img_idx, obj_idx, :, 1, row_idx, col_idx] + truth[img_idx, obj_idx, :, 3, row_idx, col_idx]
 		)
 		w, h = T.maximum(xf - xi, 0.), T.maximum(yf - yi, 0.)
 		
 		isec = w * h
-		iou = isec / (output[img_idx, obj_idx, :, 2, row_idx, col_idx] * output[img_idx, obj_idx, :, 3, row_idx, col_idx] + \
+		iou = isec / (pred[img_idx, obj_idx, :, 2, row_idx, col_idx] * pred[img_idx, obj_idx, :, 3, row_idx, col_idx] + \
 					truth[img_idx, obj_idx, :, 2, row_idx, col_idx] * truth[img_idx, obj_idx, :, 3, row_idx, col_idx] - isec)
 					 
 		# get index for matched boxes
 		match_idx = T.argmax(iou, axis=1)
+
+		# change truth to proper scale for error
+		truth = T.set_subtensor(truth[:,:,:,0,:,:], (truth[:,:,:,0,:,:] - x) / x_scale)
+		truth = T.set_subtensor(truth[:,:,:,1,:,:], (truth[:,:,:,1,:,:] - y) / y_scale)
+		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
+		truth = T.set_subtensor(truth[:,:,:,3,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
 		
 		# add to cost boxes which have been matched
 		
