@@ -7,7 +7,7 @@ class SliceSampler(object):
 	'''
 	Very basic slice sampler
 	'''
-	def __init__(self, pdf, x0, step_out_width=.1, step_out_method='double', burnin=100, seed=1991, bounds=None, log=True):
+	def __init__(self, pdf, x0, step_out_width=.05, step_out_method='double', burnin=100, seed=1991, bounds=None, log=True):
 		if isinstance(x0, list):
 			x0 = np.asarray(x0)
 		elif isinstance(x0, float) or isinstance(x0, int):
@@ -17,13 +17,18 @@ class SliceSampler(object):
 			step_out_width = step_out_width * np.ones(x0.size)
 			assert bounds.__len__() == x0.size
 
-		self.pdf = pdf
+		if not np.log:
+			self.logpdf = lambda x: np.log(pdf(x))
+		else:
+			self.logpdf = pdf
 		self._curr_x = x0
 		self.step_out_width = step_out_width
 		self.rnd_gen = npr.RandomState(seed)
 		self.bounds = bounds
 		self.log = log
 		self.burnin = burnin
+
+		self._scale = np.inf
 		
 		assert step_out_method.lower() == 'double' or step_out_method.lower() == 'increment'
 		self.step_out_method = step_out_method.lower()
@@ -36,10 +41,7 @@ class SliceSampler(object):
 		
 		for i in range(N):
 			for j in range(self._curr_x.size): # do gibbs sampling
-				if self.log:
-					y = np.log(np.exp(self.pdf(self._curr_x)) * self.rnd_gen.rand())
-				else:
-					y = self.pdf(self._curr_x) * self.rnd_gen.rand()
+				y = self.logpdf(self._curr_x) + np.log(self.rnd_gen.rand())
 				interval = self._step_out(self._curr_x, y, j)
 
 				# do shrinkage
@@ -48,7 +50,7 @@ class SliceSampler(object):
 					x_new = np.copy(self._curr_x)
 					x_new[j] = interval[0] + (interval[1] - interval[0]) * self.rnd_gen.rand()
 
-					if self.pdf(x_new) > y:
+					if self.logpdf(x_new) > y:
 						valid_sample = True
 					elif x_new[j] < self._curr_x[j]:
 						interval[0] = x_new[j]
@@ -73,7 +75,7 @@ class SliceSampler(object):
 		xi, xf = np.copy(x), np.copy(x)
 		xi[index], xf[index] = x[index] - self.step_out_width[index], x[index] + self.step_out_width[index]
 		xi, xf = self._validate_interval(xi, xf, index)
-		while self.pdf(xi) > y and self.pdf(xf) > y:
+		while (self.logpdf(xi) > y and self.logpdf(xf) > y) and not (xi[index] == self.bounds[index][0] and xf[index] == self.bounds[index][1]):
 			if self.step_out_method == 'increment':
 				self.step_out_width[index] += self.step_out_width[index]
 			elif self.step_out_method == 'double':

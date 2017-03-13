@@ -36,11 +36,16 @@ class BaseKernel(object):
         for i, par in enumerate(self.parameters):
             par.value = values[i]
 
-    def _format_vects(self, x, y):
+    def _format_vects(self, x, y, diag=False):
         x, y = format_data(x), format_data(y)
 
-        idx1, idx2 = np.meshgrid(np.arange(x.shape[0]), np.arange(y.shape[0]))
-        return x[idx1], y[idx2]
+        if not diag:
+            idx1, idx2 = np.meshgrid(np.arange(x.shape[0]), np.arange(y.shape[0]))
+            x, y =  x[idx1], y[idx2]
+        else:
+            x, y = x.reshape(x.shape + (1,)).swapaxes(1,2), x.reshape(x.shape + (1,)).swapaxes(1,2)
+
+        return x, y
 
     def __repr__(self):
         return 'Kernel({}, {})'.format(self.__class__, self.parameters.__str__())
@@ -54,8 +59,8 @@ class SquaredExpKernel(BaseKernel):
                 assert(isinstance(par, Parameter))
             self.parameters = parameters
 
-    def compute_covariance(self, x, y):
-        x, y = self._format_vects(x, y)
+    def compute_covariance(self, x, y, diag=False):
+        x, y = self._format_vects(x, y, diag=diag)
         cov = 0
         if self.parameters.__len__() < 2:
             cov = np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
@@ -63,11 +68,7 @@ class SquaredExpKernel(BaseKernel):
             cov = self.parameters[1].value * np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
 
         if self.parameters.__len__() > 2:
-            cov += self.parameters[2].value
-
-        e, _ = np.linalg.eig(cov)
-        if e[e < -1e-3].size > 0:
-            pdb.set_trace()
+            cov += (self.parameters[2].value * np.eye(cov.shape[0]))
 
         return cov
 
@@ -75,8 +76,8 @@ class LinearKernel(BaseKernel):
     def __init__(self):
         super(LinearKernel, self).__init__()
 
-    def compute_covariance(self, x, y):
-        x, y = self._format_vects(x, y)
+    def compute_covariance(self, x, y, diag=False):
+        x, y = self._format_vects(x, y, diag=diag)
         return (x * y).sum(axis=2)
 
 
@@ -91,14 +92,15 @@ class MaternKernel(BaseKernel):
         assert(type == '5/2' or type == '3/2')
         self.type = type
 
-    def compute_covariance(self, x, y):
-        x, y = self._format_vects(x, y)
+    def compute_covariance(self, x, y, diag=False):
+        x, y = self._format_vects(x, y, diag=diag)
         d = np.sqrt(((x - y)**2).sum(axis=2))
         l = self.parameters[0].value
         if self.type == '3/2':
             val = (1 + np.sqrt(3)*d/l) * np.exp(-np.sqrt(3)*d/l)
         else:
             val = (1 + np.sqrt(5)*d/l + (5 * d**2) / (3 * l**2)) * np.exp(-np.sqrt(5)*d/l)
+
         return val
 
 class InputWarpedKernel(BaseKernel):
@@ -110,7 +112,7 @@ class InputWarpedKernel(BaseKernel):
         self.N = N
 
         if parameters is not None:
-            assert(parameters.__len__() == N)
+            assert(parameters.__len__() == 2 * N)
             for par in parameters:
                 assert(isinstance(par, Parameter))
         else:
@@ -122,7 +124,7 @@ class InputWarpedKernel(BaseKernel):
         self.parameters = kernel.parameters
         self.parameters.extend(parameters)
 
-    def compute_covariance(self, x, y):
+    def compute_covariance(self, x, y, diag=False):
         x, y = format_data(x), format_data(y)
         x, y = np.copy(x), np.copy(y)
         assert(x.shape[1] == self.N and y.shape[1] == self.N)
@@ -132,7 +134,8 @@ class InputWarpedKernel(BaseKernel):
             x[:,i] = beta.cdf(x[:,i], a, b)
             y[:,i] = beta.cdf(y[:,i], a, b)
 
-        val =  self.kernel.compute_covariance(x, y)
+        val =  self.kernel.compute_covariance(x, y, diag=diag)
+
         return val
 
 

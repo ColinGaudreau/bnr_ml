@@ -7,8 +7,13 @@ from kernels import *
 from samplers import *
 from priors import *
 from utils import format_data
+from sobol import i4_sobol_generate as sobol
 
 import pdb
+
+# define constants
+SEARCH_SOBOL = 'sobol'
+SEARCH_GRID = 'grid'
 
 class BayesOpt(object):
 
@@ -42,12 +47,18 @@ class BayesOpt(object):
 			self.sampler = None
 			self.marginalize = False
 
-	def optimize(self, bounds, iters=20, finish=True, verbose=False, tol=1e-3, num_samples=10, marginalize=True, num_grid=20):
-
-		if finish:
-			finish = lambda f, x0, **kwargs: fmin_slsqp(f, x0, bounds=bounds, **kwargs)
-		else:
-			finish = None
+	def optimize(
+			self,
+			bounds=None,
+			iters=20,
+			verbose=False,
+			num_samples=10,
+			marginalize=True,
+			num_grid=20,
+			tol=1e-3,
+			search_type=SEARCH_SOBOL,
+			squash=None
+		):
 
 		# determine whether or not to marginalize kernel hyperparameters
 		marginalize &= self.marginalize
@@ -58,12 +69,16 @@ class BayesOpt(object):
 			optfun = lambda x, *args: self._expected_improvement(x)
 
 		for i in range(iters):
-			optval = self._brute_force(optfun, bounds, num_grid)
-			# optval = brute(optfun, bounds, finish=finish)
-			# yield self.X, self.Y, optval
+			if search_type == SEARCH_SOBOL:
+				optval = self._sobol_search(optfun, num_grid, bounds=bounds, squash=squash)
+			elif search_type == SEARCH_GRID:
+				optval = self._grid_search(optfun, num_grid, bounds=bounds, squash=squash)
+			else:
+				raise Exception('search_type={} not valid'.format(search_type))
+
 			self.add_observation(optval, self.optfun(optval), tol)
 			if verbose:
-				print('Iteration {} complete, minimum at {}'.format(i, self.X[np.argmin(self.Y)]))
+				print('Iteration {} complete, minimum at {}, value of {}'.format(i, self.X[np.argmin(self.Y),:], self.Y.min()))
 
 		max_idx = np.argmin(self.Y)
 		return self.X[max_idx,:], self.Y[max_idx]
@@ -121,11 +136,12 @@ class BayesOpt(object):
 		v = linalg.solve_triangular(L, K_x, lower=lower)
 
 		mean = K_x.transpose().dot(alpha)
-		var = kernel.compute_covariance(x, x) - v.transpose().dot(v)
+		# var = kernel.compute_covariance(x, x) - v.transpose().dot(v)
+		var = kernel.compute_covariance(x, x, diag=True)[:,0] - (v * v).sum(axis=0) # compute ONLY the diagonal
 
-		return mean[:,0], np.diag(var)
+		return mean[:,0], var
 
-	def _gp_loglikelihood(self):		
+	def _gp_loglikelihood(self):
 		if self._recompute:
 			self._compute_aux()
 		return self._ll
@@ -155,7 +171,18 @@ class BayesOpt(object):
 			val += self._expected_improvement(x) / num_samples
 		return val
 
-	def _brute_force(self, optfun, bounds, num_grid):
+	def _sobol_search(self, optfun, num_points, bounds=None, squash=None):
+		xvalues = sobol(self._dim, num_points, 50).transpose()
+		if bounds is not None:
+			for i, bound in enumerate(bounds):
+				xvalues[:,i] = bound[0] + np.diff(bound) * xvalues[:,i]
+		if squash is not None:
+			xvalues = squash(xvalues, inv=False)
+		yvalues = optfun(xvalues)
+		max_idx = np.argmax(yvalues)
+		return xvalues[[max_idx], :]
+
+	def _grid_search(self, optfun, num_grid, bounds=None, squash=None):
 		if isinstance(num_grid, list):
 			assert(num_grid.__len__() == bounds.__len__())
 		else:
@@ -163,8 +190,8 @@ class BayesOpt(object):
 			num_grid = [num_grid for i in range(bounds.__len__())]
 
 		xvalues = []
-		for i, bound in enumerate(bounds):
-			xvalue = np.linspace(bound[0], bound[1], num_grid[i])
+		for i in range(self._dim):
+			xvalue = np.linspace(0, 1, num_grid[i])
 			xvalue += ((xvalue[1] - xvalue[0]) * npr.rand()) # randomly shift grid
 			xvalues.append(xvalue)
 
@@ -173,6 +200,9 @@ class BayesOpt(object):
 			xvalues = np.concatenate([xvalue.reshape((-1,1)) for xvalue in xvalues], axis=1)
 		else:
 			xvalues = xvalues[0].reshape((-1,1))
+
+		if squash is not None:
+			xvalues = squash(xvalues, inv=False)
 
 		yvalues = optfun(xvalues)
 		max_idx = np.argmax(yvalues)
