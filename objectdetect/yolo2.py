@@ -172,10 +172,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
-			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
-			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
-			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
-			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
+			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
+			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
+			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 
@@ -185,12 +185,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj)
+			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj))
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, thresh))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
@@ -226,8 +226,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
 
 			# rescale output
-			output = T.set_subtensor(output[:,:,0], output[:,:,0] * w_acr + x - w_cell/2)
-			output = T.set_subtensor(output[:,:,1], output[:,:,1] * h_acr + y - h_cell/2)
+			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - w_cell/2)
+			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - h_cell/2)
 			output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
 			output = T.set_subtensor(output[:,:,3], w_acr * T.exp(output[:,:,3]))
 
@@ -264,7 +264,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		return boxes
 
-	def _get_cost2(
+	def _get_cost(
 			self,
 			output,
 			truth,
@@ -276,9 +276,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			self._lambda_obj, self._lambda_noobj, self._thresh = lambda_obj, lambda_noobj, thresh
 		else:
 			lambda_obj, lambda_noobj, thresh = self._lambda_obj, self._lambda_noobj, self._thresh
-
+		#pdb.set_trace()
 		cost = 0.
-		
 		# create grid for cells
 		w_cell, h_cell =  1. / self.output_shape[1], 1. / self.output_shape[0]
 		x, y = T.arange(w_cell / 2, 1., w_cell), T.arange(h_cell / 2, 1., h_cell)
@@ -332,6 +331,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			T.arange(self.output_shape[1])
 		)
 		
+		#pdb.set_trace()
 		# define logical matrix assigning object to correct anchor box and cell.
 		best_iou_idx = T.bitwise_and(T.eq(best_iou_idx, box_idx), overlap >= thresh)
 		
@@ -339,8 +339,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		if rescore:
 			# scale predictions correctly
 			pred = output.dimshuffle(0,'x',1,2,3,4)
-			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] * w_acr + x.dimshuffle(0,1,'x',2,3))
-			pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] * h_acr + y.dimshuffle(0,1,'x',2,3))
+			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] + x.dimshuffle(0,1,'x',2,3))
+			pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] + y.dimshuffle(0,1,'x',2,3))
 			pred = T.set_subtensor(pred[:,:,:,2], w_acr * T.exp(pred[:,:,:,2]))
 			pred = T.set_subtensor(pred[:,:,:,3], h_acr * T.exp(pred[:,:,:,3]))
 			
@@ -363,8 +363,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			),
 			self.output_shape[1], axis=5
 		)
-		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,0], (truth_boxes[:,:,:,0] - anchors[:,:,:,0]) / anchors[:,:,:,2])
-		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,1], (truth_boxes[:,:,:,1] - anchors[:,:,:,1]) / anchors[:,:,:,3])
+		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,0], truth_boxes[:,:,:,0] - anchors[:,:,:,0])
+		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,1], truth_boxes[:,:,:,1] - anchors[:,:,:,1])
 		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,2], T.log(truth_boxes[:,:,:,2] / anchors[:,:,:,2]))
 		truth_boxes = T.set_subtensor(truth_boxes[:,:,:,3], T.log(truth_boxes[:,:,:,3] / anchors[:,:,:,3]))
 		
@@ -388,10 +388,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		# penalize objectness score for non-matched boxes
 		cost += lambda_noobj * T.mean((pred[:,:,:,4]**2)[not_matched_idx.nonzero()])
-				
+		#pdb.set_trace()
 		return cost, constants
 
-	def _get_cost(
+	def _get_cost2(
 			self,
 			output,
 			truth,
@@ -454,8 +454,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		y_scale = theano.shared(np.asarray([b[1] for b in self.boxes]), name='y_scale', borrow=True).dimshuffle('x',0,'x','x')
 
 		# change predicted output to proper scale
-		pred = T.set_subtensor(output[:,:,:,0], output[:,:,:,0] * x_scale + x)
-		pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] * y_scale + y)
+		pred = T.set_subtensor(output[:,:,:,0], output[:,:,:,0] + x)
+		pred = T.set_subtensor(pred[:,:,:,1], pred[:,:,:,1] + y)
 		pred = T.set_subtensor(pred[:,:,:,2], x_scale * T.exp(pred[:,:,:,2]))
 		pred = T.set_subtensor(pred[:,:,:,3], y_scale * T.exp(pred[:,:,:,3]))
 		
@@ -480,8 +480,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		match_idx = T.argmax(iou, axis=1)
 
 		# change truth to proper scale for error
-		truth = T.set_subtensor(truth[:,:,:,0,:,:], (truth[:,:,:,0,:,:] - x) / x_scale)
-		truth = T.set_subtensor(truth[:,:,:,1,:,:], (truth[:,:,:,1,:,:] - y) / y_scale)
+		truth = T.set_subtensor(truth[:,:,:,0,:,:], truth[:,:,:,0,:,:] - x)
+		truth = T.set_subtensor(truth[:,:,:,1,:,:], truth[:,:,:,1,:,:] - y)
 		truth = T.set_subtensor(truth[:,:,:,2,:,:], T.log(truth[:,:,:,2,:,:] / x_scale))
 		truth = T.set_subtensor(truth[:,:,:,3,:,:], T.log(truth[:,:,:,3,:,:] / y_scale))
 		
@@ -512,7 +512,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			)
 		else:
 			cost += lambda_obj * T.mean(
-				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx])**2
+				(output[img_idx, obj_idx, :, 4, row_idx, col_idx][:,match_idx] - 1)**2
 			)
 		
 		# class error
