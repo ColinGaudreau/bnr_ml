@@ -321,9 +321,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		overlap = overlap.dimshuffle(0,1,'x',2,3)
 		
-		best_iou_idx = T.argmax(iou, axis=2).dimshuffle(0,1,'x',2,3)
+		best_iou_obj_idx = T.argmax(iou, axis=1).dimshuffle(0,'x',1,2,3)
+		best_iou_box_idx = T.argmax(iou, axis=2).dimshuffle(0,1,'x',2,3)
 		
-		_,_,box_idx,_,_ = meshgrid(
+		_,obj_idx,box_idx,_,_ = meshgrid(
 			T.arange(truth.shape[0]),
 			T.arange(truth.shape[1]),
 			T.arange(self.boxes.__len__()),
@@ -333,8 +334,14 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		#pdb.set_trace()
 		# define logical matrix assigning object to correct anchor box and cell.
-		best_iou_idx = T.bitwise_and(T.eq(best_iou_idx, box_idx), overlap >= thresh)
-		
+		best_iou_idx = T.bitwise_and(
+			T.bitwise_and(
+				T.eq(best_iou_box_idx, box_idx),
+				T.eq(best_iou_obj_idx, obj_idx)
+			),
+			overlap >= thresh
+		)
+
 		constants = []
 		if rescore:
 			# scale predictions correctly
