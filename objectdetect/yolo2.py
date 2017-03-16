@@ -6,7 +6,7 @@ from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
 from bnr_ml.utils.helpers import meshgrid, bitwise_not, StreamPrinter, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
-from bnr_ml.utils.theanoextensions import argmin_unique
+from bnr_ml.utils.theano_extensions import argmin_unique
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
 
@@ -221,7 +221,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
 			
-			# pdb.set_trace()
 			# define scale
 			w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr', borrow=True).dimshuffle('x',0,'x','x')
 			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
@@ -229,8 +228,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			# rescale output
 			output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
 			output = T.set_subtensor(output[:,:,3], h_acr * T.exp(output[:,:,3]))
-			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - output[:,:,2])
-			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - output[:,:,3])
+			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - output[:,:,2] / 2)
+			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - output[:,:,3] / 2)
 
 			# define confidence in prediction
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
@@ -277,7 +276,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			self._lambda_obj, self._lambda_noobj, self._thresh = lambda_obj, lambda_noobj, thresh
 		else:
 			lambda_obj, lambda_noobj, thresh = self._lambda_obj, self._lambda_noobj, self._thresh
-		pdb.set_trace()
+		
 		cost = 0.
 		# create grid for cells
 		w_cell, h_cell =  1. / self.output_shape[1], 1. / self.output_shape[0]
@@ -397,7 +396,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		# penalize objectness score for non-matched boxes
 		cost += lambda_noobj * T.mean((pred[:,0,:,4]**2)[not_matched_idx.nonzero()])
-		pdb.set_trace()
+		
 		return cost, constants
 
 	def _get_cost3(
@@ -413,7 +412,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		else:
 			lambda_obj, lambda_noobj, thresh = self._lambda_obj, self._lambda_noobj, self._thresh
 
-		pdb.set_trace()
 		cost = 0.
 		
 		# penalize everything, this will be undone if box matches ground truth
@@ -488,7 +486,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 					 
 		# get index for matched boxes
 		match_idx = T.argmax(iou, axis=1)
-		pdb.set_trace()
+		
 		# change truth to proper scale for error
 		truth = T.set_subtensor(truth[:,:,:,0,:,:], truth[:,:,:,0,:,:] - x)
 		truth = T.set_subtensor(truth[:,:,:,1,:,:], truth[:,:,:,1,:,:] - y)
@@ -547,7 +545,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		else:
 			lambda_obj, lambda_noobj = self._lambda_obj, self._lambda_noobj
 			
-		lambda_obj, lambda_noobj = 1., 1.
+		# lambda_obj, lambda_noobj = 1., 1.
 		
 		w_cell, h_cell = 1./self.output_shape[1], 1./self.output_shape[0]
 		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
@@ -577,14 +575,14 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		x, y = x[:,0,0,row_idx, col_idx].dimshuffle(1,0), y[:,0,0,row_idx, col_idx].dimshuffle(1,0)
 		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0)
 		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0)
-		
+			
 		# reformat prediction
 		pred_shift = pred_matched
-		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] - x)
-		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] - y)
 		pred_shift = T.set_subtensor(pred_shift[:,:,2], w_acr * T.exp(pred_shift[:,:,2]))
 		pred_shift = T.set_subtensor(pred_shift[:,:,3], h_acr * T.exp(pred_shift[:,:,3]))
-		
+		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] + x - pred_shift[:,:,2]/2)
+		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] + y - pred_shift[:,:,3]/2)
+
 		# calculate iou
 		xi = T.maximum(pred_shift[:,:,0], truth_flat[:,:,0])
 		yi = T.maximum(pred_shift[:,:,1], truth_flat[:,:,1])
@@ -616,6 +614,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# penalize all ious
 		cost += lambda_noobj * T.mean(output[:,:,4,:,:]**2)
 		
+		pdb.set_trace()
 		# coordinate penalty
 		cost += lambda_obj * T.mean(T.sum((pred_matched[num_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
 		
@@ -629,4 +628,4 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# coordinate penatly
 		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[num_idx, acr_idx, -self.num_classes:]), axis=1))
 		
-		return cost
+		return cost, [iou]

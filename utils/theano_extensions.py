@@ -2,7 +2,7 @@ import theano
 import theano.tensor as T
 import numpy as np
 
-class ArgminUnique(theano.Op):
+class ArgminUniqueOp(theano.Op):
 	
 	def __init__(self, unique, axis, min=True):
 		self.unique = unique
@@ -28,7 +28,7 @@ class ArgminUnique(theano.Op):
 
 	def grad(self, inputs, grads):
 		x, axis = inputs
-		axis_grad = theano.gradient.grad_undefined(self, 1, axis, "ArgminUnique Op doesn't have a gradient w.r.t. to its parameters.")
+		axis_grad = theano.gradient.grad_undefined(self, 1, axis, "ArgminUniqueOp doesn't have a gradient w.r.t. to its parameters.")
 		return [x.zeros_like(), axis_grad]
 
 	def _fill(self, x, unique, axis, min):
@@ -79,4 +79,4 @@ class ArgminUnique(theano.Op):
 					
 
 def argmin_unique(x, unique, axis, min=True):
-	return FillOp(unique, axis, min)(x)
+	return ArgminUniqueOp(unique, axis, min)(x)
