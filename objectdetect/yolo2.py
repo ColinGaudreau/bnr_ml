@@ -6,6 +6,7 @@ from bnr_ml.nnet.updates import momentum as momentum_update
 from bnr_ml.nnet.layers import AbstractNNetLayer
 from bnr_ml.utils.helpers import meshgrid, bitwise_not, StreamPrinter, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqrt
+from bnr_ml.utils.theanoextensions import argmin_unique
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
 
@@ -399,7 +400,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		pdb.set_trace()
 		return cost, constants
 
-	def _get_cost(
+	def _get_cost3(
 			self,
 			output,
 			truth,
@@ -533,3 +534,99 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		)
 				
 		return cost, [iou]
+
+	def _get_cost(
+			self,
+			output,
+			truth,
+			rescore=True
+		):
+		if not hasattr(self, '_lambda_obj'):
+			lambda_obj, lambda_noobj = T.scalar('lambda_obj'), T.scalar('lambda_noobj')
+			self._lambda_obj, self._lambda_noobj = lambda_obj, lambda_noobj
+		else:
+			lambda_obj, lambda_noobj = self._lambda_obj, self._lambda_noobj
+			
+		lambda_obj, lambda_noobj = 1., 1.
+		
+		w_cell, h_cell = 1./self.output_shape[1], 1./self.output_shape[0]
+		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
+		y, x = meshgrid(x, y)
+		x, y = x.dimshuffle('x','x','x',0,1), y.dimshuffle('x','x','x',0,1)
+		
+		cell_coord = T.concatenate((x,y), axis=2)
+		gt_coord = (truth[:,:,:2] + truth[:,:,2:4]/2).dimshuffle(0,1,2,'x','x')
+		
+		gt_dist = T.sum((gt_coord - cell_coord)**2, axis=2).reshape((truth.shape[0],truth.shape[1],-1))
+				
+		cell_idx = argmin_unique(gt_dist, 1, 2).reshape((-1,)) # assign unique cell to each obj per example
+		row_idx = T.cast(cell_idx // self.output_shape[1], 'int64')
+		col_idx = cell_idx - row_idx * self.output_shape[1]
+		
+		num_idx = T.repeat(T.arange(truth.shape[0]).reshape((-1,1)), truth.shape[1], axis=1).reshape((-1,))
+		obj_idx = T.repeat(T.arange(truth.shape[1]).reshape((1,-1)), truth.shape[0], axis=0).reshape((-1,))
+		
+		valid_example = gt_dist[num_idx, obj_idx, cell_idx] < 1 # if example further than 1 away from cell it's a garbage example
+		
+		num_idx, obj_idx = num_idx[valid_example.nonzero()], obj_idx[valid_example.nonzero()]
+		row_idx, col_idx = row_idx[valid_example.nonzero()], col_idx[valid_example.nonzero()]
+		
+		truth_flat = truth[num_idx, obj_idx, :].dimshuffle(0,'x',1)
+		
+		pred_matched = output[num_idx,:,:,row_idx, col_idx]
+		x, y = x[:,0,0,row_idx, col_idx].dimshuffle(1,0), y[:,0,0,row_idx, col_idx].dimshuffle(1,0)
+		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0)
+		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0)
+		
+		# reformat prediction
+		pred_shift = pred_matched
+		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] - x)
+		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] - y)
+		pred_shift = T.set_subtensor(pred_shift[:,:,2], w_acr * T.exp(pred_shift[:,:,2]))
+		pred_shift = T.set_subtensor(pred_shift[:,:,3], h_acr * T.exp(pred_shift[:,:,3]))
+		
+		# calculate iou
+		xi = T.maximum(pred_shift[:,:,0], truth_flat[:,:,0])
+		yi = T.maximum(pred_shift[:,:,1], truth_flat[:,:,1])
+		xf = T.minimum(pred_shift[:,:,[0,2]].sum(axis=2), truth_flat[:,:,[0,2]].sum(axis=2))
+		yf = T.minimum(pred_shift[:,:,[1,3]].sum(axis=2), truth_flat[:,:,[1,3]].sum(axis=2))
+		w, h = T.maximum(xf - xi, 0), T.maximum(yf - yi, 0)
+		
+		isec = w * h
+		union = T.prod(pred_shift[:,:,[2,3]], axis=2) + T.prod(truth_flat[:,:,[2,3]], axis=2) - isec
+		iou = isec / union
+		
+		# get max iou
+		acr_idx = T.argmax(iou, axis=1)
+		
+		# reformat truth
+		truth_formatted = truth_flat
+		truth_formatted = T.repeat(truth_formatted, self.boxes.__len__(), axis=1)
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,0], truth_formatted[:,:,0] + truth_formatted[:,:,2]/2 - x)
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,1], truth_formatted[:,:,1] + truth_formatted[:,:,3]/2 - y)
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,2], T.log(truth_formatted[:,:,2] / w_acr))
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,3], T.log(truth_formatted[:,:,3] / h_acr))
+		truth_formatted = truth_formatted[T.arange(truth_formatted.shape[0]),acr_idx,:]
+				
+		#
+		# calculate cost
+		#
+		cost = 0.
+		
+		# penalize all ious
+		cost += lambda_noobj * T.mean(output[:,:,4,:,:]**2)
+		
+		# coordinate penalty
+		cost += lambda_obj * T.mean(T.sum((pred_matched[num_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
+		
+		# iou penalty
+		cost -= lambda_noobj * T.sum(pred_matched[num_idx, acr_idx,4]**2) / output.size
+		if rescore:
+			cost += lambda_obj * T.mean((pred_matched[num_idx, acr_idx,4] - iou[num_idx, acr_idx])**2)
+		else:
+			cost += lambda_obj * T.mean((pred_matched[num_idx, acr_idx,4] - 1)**2)
+		
+		# coordinate penatly
+		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[num_idx, acr_idx, -self.num_classes:]), axis=1))
+		
+		return cost
