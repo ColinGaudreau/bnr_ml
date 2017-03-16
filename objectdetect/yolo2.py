@@ -342,7 +342,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		)
 		
 		constants = []
-		if rescore:
+		if rescore: 
 			# scale predictions correctly
 			pred = output.dimshuffle(0,'x',1,2,3,4)
 			pred = T.set_subtensor(pred[:,:,:,0], pred[:,:,:,0] + x.dimshuffle(0,1,'x',2,3))
@@ -551,6 +551,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
 		y, x = meshgrid(x, y)
 		x, y = x.dimshuffle('x','x','x',0,1), y.dimshuffle('x','x','x',0,1)
+
+		# create anchors for later
+		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0,'x','x','x')
+		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0,'x','x','x')
+		anchors = T.concatenate((x,y,w_acr,y_acr), axis=2)
 		
 		cell_coord = T.concatenate((x,y), axis=2)
 		gt_coord = (truth[:,:,:2] + truth[:,:,2:4]/2).dimshuffle(0,1,2,'x','x')
@@ -611,15 +616,18 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		#
 		cost = 0.
 		
-		# penalize all ious
-		cost += lambda_noobj * T.mean(output[:,:,4,:,:]**2)
+		# penalize all ious and try to make boxes close to anchors
+		cost += lambda_noobj * T.mean(output[:,:,4]**2)
+		cost += lambda_noobj * T.mean(T.sum((output[:,:,:4] - anchors)**2, axis=2))
 		
+		# undo penatly for matched boxes
+		cost -= lambda_noobj * T.sum(pred_matched[num_idx, acr_idx,4]**2) / output[:,:,4].size
+		cost -= lambda_noobj * T.sum(T.sum((pred_matched[num_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
+
 		pdb.set_trace()
 		# coordinate penalty
 		cost += lambda_obj * T.mean(T.sum((pred_matched[num_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
 		
-		# iou penalty
-		cost -= lambda_noobj * T.sum(pred_matched[num_idx, acr_idx,4]**2) / output.size
 		if rescore:
 			cost += lambda_obj * T.mean((pred_matched[num_idx, acr_idx,4] - iou[num_idx, acr_idx])**2)
 		else:
