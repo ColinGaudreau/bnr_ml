@@ -227,10 +227,10 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
 
 			# rescale output
-			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - w_cell / 2)
-			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - h_cell / 2)
 			output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
 			output = T.set_subtensor(output[:,:,3], h_acr * T.exp(output[:,:,3]))
+			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - output[:,:,2])
+			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - output[:,:,3])
 
 			# define confidence in prediction
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
