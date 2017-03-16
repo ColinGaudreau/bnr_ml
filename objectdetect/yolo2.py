@@ -556,7 +556,9 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		gt_coord = (truth[:,:,:2] + truth[:,:,2:4]/2).dimshuffle(0,1,2,'x','x')
 		
 		gt_dist = T.sum((gt_coord - cell_coord)**2, axis=2).reshape((truth.shape[0],truth.shape[1],-1))
-				
+
+		#pdb.set_trace()
+
 		cell_idx = argmin_unique(gt_dist, 1, 2).reshape((-1,)) # assign unique cell to each obj per example
 		row_idx = T.cast(cell_idx // self.output_shape[1], 'int64')
 		col_idx = cell_idx - row_idx * self.output_shape[1]
