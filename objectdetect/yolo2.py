@@ -553,10 +553,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		x, y = x.dimshuffle('x','x','x',0,1), y.dimshuffle('x','x','x',0,1)
 
 		# create anchors for later
-		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0,'x','x','x')
-		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0,'x','x','x')
-		anchors = T.concatenate((x,y,w_acr,y_acr), axis=2)
-		
+		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0,'x','x','x') * T.ones_like(x)
+		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0,'x','x','x') * T.ones_like(y)
+		anchors = T.concatenate((x * T.zeros_like(w_acr), y * T.zeros_like(h_acr), w_acr, h_acr), axis=2)
+		anchors = T.repeat(anchors, truth.shape[0], axis=0)
+
 		cell_coord = T.concatenate((x,y), axis=2)
 		gt_coord = (truth[:,:,:2] + truth[:,:,2:4]/2).dimshuffle(0,1,2,'x','x')
 		
@@ -582,14 +583,14 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		x, y = x[:,0,0,row_idx, col_idx].dimshuffle(1,0), y[:,0,0,row_idx, col_idx].dimshuffle(1,0)
 		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0)
 		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0)
-			
+	
 		# reformat prediction
 		pred_shift = pred_matched
 		pred_shift = T.set_subtensor(pred_shift[:,:,2], w_acr * T.exp(pred_shift[:,:,2]))
 		pred_shift = T.set_subtensor(pred_shift[:,:,3], h_acr * T.exp(pred_shift[:,:,3]))
 		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] + x - pred_shift[:,:,2]/2)
 		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] + y - pred_shift[:,:,3]/2)
-
+		
 		# calculate iou
 		xi = T.maximum(pred_shift[:,:,0], truth_flat[:,:,0])
 		yi = T.maximum(pred_shift[:,:,1], truth_flat[:,:,1])
@@ -612,10 +613,13 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		truth_formatted = T.set_subtensor(truth_formatted[:,:,2], T.log(truth_formatted[:,:,2] / w_acr))
 		truth_formatted = T.set_subtensor(truth_formatted[:,:,3], T.log(truth_formatted[:,:,3] / h_acr))
 		truth_formatted = truth_formatted[T.arange(truth_formatted.shape[0]),acr_idx,:]
-				
+		
+		pdb.set_trace()	
 		#
 		# calculate cost
 		#
+		item_idx = T.arange(pred_matched.shape[0])
+
 		cost = 0.
 		
 		# penalize all ious and try to make boxes close to anchors
@@ -623,19 +627,18 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		cost += lambda_noobj * T.mean(T.sum((output[:,:,:4] - anchors)**2, axis=2))
 		
 		# undo penatly for matched boxes
-		cost -= lambda_noobj * T.sum(pred_matched[num_idx, acr_idx,4]**2) / output[:,:,4].size
-		cost -= lambda_noobj * T.sum(T.sum((pred_matched[num_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
+		cost -= lambda_noobj * T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size
+		cost -= lambda_noobj * T.sum(T.sum((pred_matched[item_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
 
-		pdb.set_trace()
 		# coordinate penalty
-		cost += lambda_obj * T.mean(T.sum((pred_matched[num_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
+		cost += lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
 		
 		if rescore:
-			cost += lambda_obj * T.mean((pred_matched[num_idx, acr_idx,4] - iou[num_idx, acr_idx])**2)
+			cost += lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - iou[item_idx, acr_idx])**2)
 		else:
-			cost += lambda_obj * T.mean((pred_matched[num_idx, acr_idx,4] - 1)**2)
+			cost += lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - 1)**2)
 		
 		# coordinate penatly
-		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[num_idx, acr_idx, -self.num_classes:]), axis=1))
+		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
 		
 		return cost, [iou]
