@@ -624,11 +624,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# penalize all ious and try to make boxes close to anchors
 		cost += lambda_noobj * T.mean(output[:,:,4]**2)
-		cost += lambda_noobj * T.mean(T.sum((output[:,:,:4] - anchors)**2, axis=2))
+		cost += .1 * T.mean(T.sum((output[:,:,:4] - anchors)**2, axis=2))
 		
 		# undo penatly for matched boxes
 		cost -= lambda_noobj * T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size
-		cost -= lambda_noobj * T.sum(T.sum((pred_matched[item_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
+		cost -= .1 * T.sum(T.sum((pred_matched[item_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
 
 		# coordinate penalty
 		cost += lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
