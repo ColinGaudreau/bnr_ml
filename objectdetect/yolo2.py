@@ -555,7 +555,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# create anchors for later
 		w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr').dimshuffle('x',0,'x','x','x') * T.ones_like(x)
 		h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr').dimshuffle('x',0,'x','x','x') * T.ones_like(y)
-		anchors = T.concatenate((x * T.zeros_like(w_acr), y * T.zeros_like(h_acr), w_acr, h_acr), axis=2)
+		anchors = T.concatenate((x * T.ones_like(w_acr), y * T.ones_like(h_acr), w_acr, h_acr), axis=2)
 		anchors = T.repeat(anchors, truth.shape[0], axis=0)
 
 		cell_coord = T.concatenate((x,y), axis=2)
@@ -601,9 +601,21 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		isec = w * h
 		union = T.prod(pred_shift[:,:,[2,3]], axis=2) + T.prod(truth_flat[:,:,[2,3]], axis=2) - isec
 		iou = isec / union
+
+		# calculate iou for anchor
+		anchor_matched = anchor[num_idx,:,:,row_idx,col_idx]
+		xi = T.maximum(anchor_matched[:,:,0], truth_flat[:,:,0])
+		yi = T.maximum(anchor_matched[:,:,1], truth_flat[:,:,1])
+		xf = T.minimum(anchor_matched[:,:,[0,2]].sum(axis=2), truth_flat[:,:,[0,2]].sum(axis=2))
+		yf = T.minimum(anchor_matched[:,:,[1,3]].sum(axis=2), truth_flat[:,:,[1,3]].sum(axis=2))
+		w, h = T.maximum(xf - xi, 0), T.maximum(yf - yi, 0)
+		
+		isec = w * h
+		union = T.prod(anchor_matched[:,:,[2,3]], axis=2) + T.prod(truth_flat[:,:,[2,3]], axis=2) - isec
+		iou_acr = isec / union
 		
 		# get max iou
-		acr_idx = T.argmax(iou, axis=1)
+		acr_idx = T.argmax(iou_acr, axis=1)
 		
 		# reformat truth
 		truth_formatted = truth_flat
@@ -619,6 +631,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# calculate cost
 		#
 		item_idx = T.arange(pred_matched.shape[0])
+		anchor = T.set_subtensor(anchor[:,:,:2], 0.)
 
 		cost = 0.
 		
