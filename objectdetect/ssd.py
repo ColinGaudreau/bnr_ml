@@ -79,7 +79,7 @@ class SingleShotDetector(BaseLearningObject):
 		self.smax = smax
 		self.input = network['input'].input_var
 		self.input_shape = network['input'].shape[-2:]
-		self._hyperparameters = {'ratios': ratios, 'smin': smin, 'smax': smax}
+		self._hyperparameters = [{'ratios': ratios, 'smin': smin, 'smax': smax}]
 
 		# build default map
 		self._build_default_maps()
