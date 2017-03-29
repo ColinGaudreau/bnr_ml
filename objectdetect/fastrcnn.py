@@ -11,6 +11,7 @@ from lasagne.updates import rmsprop, sgd
 
 from skimage.io import imread
 from skimage.transform import resize
+from skimage import color
 import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
@@ -309,66 +310,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			output[cls] = cls_output
 
 		return output
-		
-	# @staticmethod
-	# def generate_data(
-	# 		annotations,
-	# 		new_size,
-	# 		num_classes,
-	# 		per_batch=2,
-	# 		num_rios=50,
-	# 		min_overlap=.5
-	# 	):
-
-	# 	swap_axes = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-
-	# 	for i in range(0,annotations.__len__(),per_batch):
-	# 		X, y = np.zeros((num_rios * per_batch, 3) + new_size), np.zeros((num_rios * per_batch, 4 + (num_classes + 1)))
-	# 		cnt = 0
-	# 		for j in range(min(per_batch, annotations.__len__() - i)):
-	# 			annotation = annotations[i+j]
-	# 			objs = [deepcopy(o) for o in annotation['annotations']]
-	# 			im = imread(annotation['image'])
-
-	# 			if im.shape.__len__() == 2:
-	# 				im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
-	# 			elif im.shape[2] > 3:
-	# 				im = im[:,:,:3]
-	# 			if im.max() > 1:
-	# 				im = im / 255.
-	# 			if im.dtype != theano.config.floatX:
-	# 				im = im.astype(theano.config.floatX)
-
-	# 			for k in range(num_rios):
-	# 				coord, label = np.zeros(4), np.zeros(num_classes + 1)
-	# 				obj = objs[int(objs.__len__() * np.random.rand())]
-	# 				to_be_localized = np.random.rand() < .5
-
-	# 				if to_be_localized:
-	# 					iou = 0.7 + 0.3 * np.random.rand()
-	# 					label[obj['label']] = 1.
-	# 				else:
-	# 					iou = 0.1 + 0.2 * np.random.rand()
-	# 					label[num_classes] = 1.
-	# 				obj_box = BoundingBox(
-	# 					obj['x'],
-	# 					obj['y'],
-	# 					obj['x'] + obj['w'],
-	# 					obj['y'] + obj['h']
-	# 				)
-	# 				new_box = BoundingBox.gen_randombox(iou, obj_box)
-	# 				if new_box.isvalid():
-	# 					if to_be_localized:
-	# 						coord[0] = (obj_box.xi - new_box.xi) / (new_box.w)
-	# 						coord[1] = (obj_box.yi - new_box.yi) / (new_box.h)
-	# 						coord[2] = 100 * np.log(obj_box.w / new_box.w)
-	# 						coord[3] = 100 * np.log(obj_box.h / new_box.h)
-	# 					new_im = new_box.subimage(im)
-	# 					if np.prod(new_im.shape) > 0:
-	# 						X[cnt] = swap_axes(resize(new_im, new_size))
-	# 						y[cnt,:4], y[cnt,-(num_classes + 1):] = coord, label
-	# 						cnt += 1
-	# 		yield X[:cnt].astype(theano.config.floatX), y[:cnt].astype(theano.config.floatX)
 
 def _gen_boxes(imsize, num_pos=20, num_scale=20):
 	x = np.linspace(0, imsize[1], num_pos)
@@ -527,9 +468,32 @@ def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano
 		xim, yim, wim, him = obj['xim'], obj['yim'], obj['wim'], obj['him']
 		box = BoundingBox(xim, yim, xim + wim, yim + him)
 		subim = box.subimage(im)
+
+		# colour space augmentation
+		subim = color.rgb2hsv(subim)
+		subim[:,:,2] *= (0.6 * npr.rand() + 0.9)
+		idx = subim[:,:,2] > 1.0
+		subim[:,:,2][idx] = 1.0
+		subim = color.hsv2rgb(subim)
+
+		# randomly rotate
+		flip_horz, flip_vert = npr.rand() > .5 ,npr.rand() > .5
+		if flip_horz:
+			subim = subim[:,::-1]
+		if flip_vert:
+			subim = subim[::-1,:]
+
 		subim = resize(subim, size)
+
 		if obj['label'] != 'nothing':
 			x,y,w,h = obj['x'], obj['y'], obj['w'], obj['h']
+
+			# flip coordinates
+			if flip_horz:
+				x = 1 - (x + w)
+			if flip_vert:
+				y = 1 - (y + h)
+
 			xscale, yscale = 1. / wim, 1. / him
 			x, y, w, h = x * xscale, y * yscale, np.log(w * xscale), np.log(h * yscale)
 			gtruth[:4] = [x, y, w, h]
@@ -560,7 +524,7 @@ def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=
 				objs,
 				boxes,
 				imsize,
-				N=N, 
+				N=N,
 				neg=neg,
 				min_obj_size=min_obj_size
 			)

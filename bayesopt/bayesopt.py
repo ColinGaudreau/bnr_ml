@@ -15,6 +15,12 @@ import pdb
 SEARCH_SOBOL = 'sobol'
 SEARCH_GRID = 'grid'
 
+ACQ_EI = 'expected_improvement'
+ACQ_UCB = 'upper_confidence_bound'
+
+TYPE_CONTINUOUS = 'continous'
+TYPE_DISCRETE = 'discrete'
+
 class BayesOpt(object):
 
 	def __init__(self, optfun, X, Y, noise, kernel, burnin=500, resample=50):
@@ -57,16 +63,25 @@ class BayesOpt(object):
 			num_grid=20,
 			tol=1e-3,
 			search_type=SEARCH_SOBOL,
+			acq_type=ACQ_EI,
+			kappa=0.5,
 			squash=None
 		):
 
 		# determine whether or not to marginalize kernel hyperparameters
 		marginalize &= self.marginalize
 
-		if marginalize:
-			optfun = lambda x, *args: self._integrated_expected_improvement(x, num_samples)
+		if acq_type == ACQ_EI:
+			acq_fun = self._ei
+		elif acq_type == ACQ_UCB:
+			acq_fun = lambda x: self._ucb(x, kappa)
 		else:
-			optfun = lambda x, *args: self._expected_improvement(x)
+			raise Exception('acq_type={} not valid'.format(acq_type))
+
+		if marginalize:
+			optfun = lambda x, *args: self._integrated_acquisition(x, num_samples, acq_fun)
+		else:
+			optfun = lambda x, *args: acq_fun
 
 		for i in range(iters):
 			if search_type == SEARCH_SOBOL:
@@ -154,13 +169,17 @@ class BayesOpt(object):
 		self.set_kernel_parameters(values)
 		return self._gp_loglikelihood() + self.kernel.logprior()
 
-	def _expected_improvement(self, x):
+	def _ei(self, x):
 		y_best = np.max(self.Y)
 		mu, var = self._gp_posterior(x)
 		gamma = (y_best - mu)/ np.sqrt(var)
 		return np.sqrt(var) * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
 
-	def _integrated_expected_improvement(self, x, num_samples):
+	def _ucb(self, x, kappa):
+		mu, var = self._gp_posterior(x)
+		return mu - kappa * np.sqrt(var)
+
+	def _integrated_acquisition(self, x, num_samples, acq_fun):
 		'''
 		Marginalize kernel hyperparameters
 		'''
@@ -168,14 +187,18 @@ class BayesOpt(object):
 		hp_samples = self.sampler.sample(num_samples)
 		for i in range(num_samples):
 			self.set_kernel_parameters(hp_samples[i])
-			val += self._expected_improvement(x) / num_samples
+			val += acq_fun(x) / num_samples
 		return val
 
 	def _sobol_search(self, optfun, num_points, bounds=None, squash=None):
 		xvalues = sobol(self._dim, num_points, 50).transpose()
 		if bounds is not None:
 			for i, bound in enumerate(bounds):
-				xvalues[:,i] = bound[0] + np.diff(bound) * xvalues[:,i]
+				if isinstance(bound, tuple):
+					xvalues[:,i] = bound[0] + np.diff(bound) * xvalues[:,i]
+				elif isinstance(bound, list) or isinstance(bound, np.ndarray):
+					bound = np.asarray(bound)
+					xvalues[:,i] = bound[npr.randint(bound.size, size=num_points)]
 		if squash is not None:
 			xvalues = squash(xvalues, inv=False)
 		yvalues = optfun(xvalues)
@@ -187,7 +210,7 @@ class BayesOpt(object):
 			assert(num_grid.__len__() == bounds.__len__())
 		else:
 			assert(num_grid >= 2)
-			num_grid = [num_grid for i in range(bounds.__len__())]
+			num_grid = [num_grid for i in range(self._dim)]
 
 		xvalues = []
 		for i in range(self._dim):
