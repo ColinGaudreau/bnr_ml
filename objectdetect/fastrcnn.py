@@ -339,15 +339,14 @@ def generate_proposal_boxes(boxes, n_proposals=1000):
 	
 	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
 	proposal = np.zeros((n_proposals, 4))
-	n_pos = int(0.5 * n_proposals)
+	n_pos = int(0.25 * n_proposals)
 	n_neg = n_proposals - n_pos
 	for i in range(boxes.shape[0]):
 		# positive box examples
-		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/4) + (2./4) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/4) + (2./4) * boxes[i,3] * npr.rand(n_pos)
-		proposal[:n_pos,2] = (3./4) * boxes[i,2] + (2./4) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,3] = (3./4) * boxes[i,3] + (2./4) * boxes[i,3] * npr.rand(n_pos)
-		
+		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/5) + (2./5) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/5) + (2./5) * boxes[i,3] * npr.rand(n_pos)
+		proposal[:n_pos,2] = (4./5) * boxes[i,2] + (2./5) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,3] = (4./5) * boxes[i,3] + (2./5) * boxes[i,3] * npr.rand(n_pos)
 		# negative examples
 		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/2) + boxes[i,2] * npr.rand(n_neg)
 		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/2) + boxes[i,3] * npr.rand(n_neg)
@@ -423,6 +422,10 @@ def generate_example(
 		n_pos
 	):
 	neg_idx, pos_idx, obj_idx = indices
+
+	if neg_idx.size == 0 or pos_idx.size == 0:
+		print('Warning, no valid prosals were given.')
+		return None
 	
 	neg_examples = proposals[neg_idx,:]
 	
@@ -485,23 +488,28 @@ def generate_data(
 	if not isinstance(annotations, np.ndarray):
 		annotations = np.asarray(annotations)
 	npr.shuffle(annotations)
-	
-	for i in range(0,annotations.size,batch_size):
-		X = np.zeros(((n_neg + n_pos) * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-		y = np.zeros(((n_neg + n_pos) * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
-		for j in range(min(batch_size, annotations.size - i)):
-			idx = i + j
-			boxes = format_boxes(annotations[idx]['annotations'])
-			proposals = generate_proposal_boxes(boxes, n_proposals=n_proposals)
-			indices = find_valid_boxes(boxes, proposals)
-			im = format_image(imread(annotations[idx]['image']), dtype=theano.config.floatX)
-			X_j, y_j = generate_example(im, input_shape, num_classes, label_to_num, annotations[idx]['annotations'], proposals, indices, n_neg, n_pos)
-			X[j*(n_neg + n_pos):(j+1)*(n_neg + n_pos)] = X_j
-			y[j*(n_neg + n_pos):(j+1)*(n_neg + n_pos)] = y_j
-		X, y = X[:(j+1)*(n_neg + n_pos)], y[:(j+1)*(n_neg + n_pos)]
-		idx = np.arange(X.shape[0])
-		npr.shuffle(idx)
-		yield X[idx], y[idx]
+	n_total = n_neg + n_pos
+	cnt = 0
+
+	for i in range(annotations.size):
+		X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
+		y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+		boxes = format_boxes(annotations[i]['annotations'])
+		proposals = generate_proposal_boxes(boxes, n_proposals=n_proposals)
+		indices = find_valid_boxes(boxes, proposals)
+		im = format_image(imread(annotations[idx]['image']), dtype=theano.config.floatX)
+		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[idx]['annotations'], proposals, indices, n_neg, n_pos)
+		if data is not None:
+			X[cnt*n_total:(cnt+1)*n_total], y[cnt*n_total:(cnt+1)*n_total] = data[0], data[1]
+			cnt += 1
+
+		if cnt == batch_size or (i-1) == annotations.size:
+			X, y = X[:cnt*n_total], y[:cnt*n_total]
+			if X.shape[0] > 0:
+				idx = np.arange(X.shape[0])
+				npr.shuffle(idx)
+				yield X[idx], y[idx]
+			cnt = 0
 
 # def _gen_boxes(imsize, num_pos=20, num_scale=20):
 # 	x = np.linspace(0, imsize[1], num_pos)
