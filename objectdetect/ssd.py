@@ -50,7 +50,7 @@ class SSDSettings(BaseLearningSettings):
 		self.update_args = update_args
 		self.alpha = alpha
 		self.min_iou = min_iou
-		self.hyperparameters = {}
+		self.hyperparameters = hyperparameters
 
 	def serialize(self):
 		serialization = {}

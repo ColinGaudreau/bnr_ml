@@ -16,7 +16,7 @@ import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
-from bnr_ml.utils.helpers import meshgrid2D, format_image
+from bnr_ml.utils.helpers import meshgrid2D, format_image, StreamPrinter
 from bnr_ml.objectdetect.detector import BaseDetector
 from bnr_ml.objectdetect.nms import nms
 
@@ -28,7 +28,41 @@ from tqdm import tqdm
 
 import dlib
 
-from ml_logger.learning_objects import BaseLearningObject
+from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
+
+class FastRCNNSettings(BaseLearningSettings):
+	def __init__(
+			self,
+			train_annotations,
+			test_annotations,
+			train_args,
+			print_obj=None,
+			update_fn=rmsprop,
+			update_args={'learning_rate': 1e-5},
+			lmbda=1.,
+			hyperparameters={}
+		):
+		super(FastRCNNSettings, self).__init__()
+		self.train_annotations = train_annotations
+		self.test_annotations = test_annotations
+		self.train_args = train_args
+		if print_obj is None:
+			self.print_obj = StreamPrinter(open('/dev/stdout', 'w'))
+		else:
+			self.print_obj = print_obj
+		self.update_fn = update_fn
+		self.update_args = update_args
+		self.lmbda = lmbda
+		self.hyperparameters = hyperparameters
+
+	def serialize(self):
+		serialization = {}
+		serialization['update_fn'] = self.update_fn.__str__()
+		serialization['update_args'] = self.update_args
+		serialization['lmbda'] = self.lmbda
+		serialization['train_args'] = self.train_args
+		serialization.update(self.hyperparameters)
+		return serialization
 
 class FastRCNNDetector(BaseLearningObject, BaseDetector):
 	'''
@@ -125,19 +159,15 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			lmbda=1.,
 			hyperparameters={},
 		):
-		'''
-		'''
-		# update hyperparameters list
-		hyperparameters.update({
-			'num_batch': num_batch,
-			'N': N,
-			'neg': neg,
-			'lr': lr,
-			'momentum': momentum,
-			'lambda': lmbda,
-			'update_fn': update_fn.__str__()
-		})
-		self._hyperparameters.append(hyperparameters)
+
+		# get settings for settings object
+		train_annotations = self.settings.train_annotations
+		test_annotations = self.settings.test_annotations
+		train_args = self.settings.train_args
+		print_obj = self.settings.print_obj
+		update_fn = self.settings.update_fn
+		update_args = self.settings.update_args
+		lmbda = self.settings.lmbda
 
 		self._trained = True
 		target = T.matrix('target')
@@ -152,7 +182,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				params = self.get_params()[:-2]
 			else:
 				params = self.get_params()
-			updates = rmsprop(cost, params, learning_rate=lr)
+			updates = update_fn(cost, params, **update_args)
 
 			ti = time.time();
 			self._train_fn = theano.function([self.input, target], cost, updates=updates)
@@ -167,12 +197,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		test_loss_batch = []
 		
 		ti = time.time()
-		for Xbatch, ybatch in generate_rois(train_annotations, self.input_shape, self.num_classes, label_dict, num_batch=num_batch, N=N, neg=neg):
+		for Xbatch, ybatch in generate_data(train_annotations, **train_args):
 			err = self._train_fn(Xbatch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
 		
-		for Xbatch, ybatch in generate_rois(test_annotations, self.input_shape, self.num_classes, label_dict, num_batch=num_batch_test, N=N_test, neg=neg_test):
+		for Xbatch, ybatch in generate_data(test_annotations, **train_args):
 			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
@@ -462,12 +492,12 @@ def generate_example(
 
 def generate_data(
 		annotations,
-		input_shape,
-		num_classes,
-		label_to_num,
-		n_neg,
-		n_pos,
-		batch_size,
+		input_shape=None,
+		num_classes=None,
+		label_to_num=None,
+		n_neg=9,
+		n_pos=3,
+		batch_size=2,
 		n_proposals=1500
 	):
 	if not isinstance(annotations, np.ndarray):
