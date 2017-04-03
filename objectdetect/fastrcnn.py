@@ -487,6 +487,8 @@ def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano
 
 		if obj['label'] != 'nothing':
 			x,y,w,h = obj['x'], obj['y'], obj['w'], obj['h']
+			x_scale, y_scale = 1. / wim, 1. / him
+			x, y, w, h = x * x_scale, y * y_scale, w * x_scale, h * y_scale
 
 			# flip coordinates
 			if flip_horz:
@@ -494,8 +496,7 @@ def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano
 			if flip_vert:
 				y = 1 - (y + h)
 
-			xscale, yscale = 1. / wim, 1. / him
-			x, y, w, h = x * xscale, y * yscale, np.log(w * xscale), np.log(h * yscale)
+			w, h = np.log(w), np.log(h)
 			gtruth[:4] = [x, y, w, h]
 		labels[i] = gtruth
 		X[i] = subim.reshape((1,) + subim.shape).swapaxes(3,2).swapaxes(2,1)
