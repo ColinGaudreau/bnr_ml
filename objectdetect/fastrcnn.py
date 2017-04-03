@@ -16,7 +16,7 @@ import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
-from bnr_ml.utils.helpers import meshgrid2D
+from bnr_ml.utils.helpers import meshgrid2D, format_image
 from bnr_ml.objectdetect.detector import BaseDetector
 from bnr_ml.objectdetect.nms import nms
 
@@ -311,246 +311,426 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		return output
 
-def _gen_boxes(imsize, num_pos=20, num_scale=20):
-	x = np.linspace(0, imsize[1], num_pos)
-	y = np.linspace(0, imsize[0], num_pos)
-	w = np.linspace(0, imsize[1], num_scale)
-	h = np.linspace(0, imsize[0], num_scale)
-	
-	x,y,w,h = np.meshgrid(x,y,w,h)
-	x,y,w,h = x.reshape((-1,1)), y.reshape((-1,1)), w.reshape((-1,1)), h.reshape((-1,1))
-	boxes = np.concatenate((x,y,w,h), axis=1)
-
-	boxes[:,0] = np.maximum(0., np.minimum(imsize[0], boxes[:,0]))
-	boxes[:,1] = np.maximum(0., np.minimum(1, boxes[:,1]))
-	idx = boxes[:,0] + boxes[:,2] > imsize[1]
-	boxes[idx,2] = imsize[1]
-	idx = boxes[:,1] + boxes[:,3] > imsize[0]
-	boxes[idx,3] = imsize[0]
-
-	return boxes
-
-def _generate_boxes_from_obj(obj, imsize, num_pos=20, num_scale=20, mult=2):
-	x = np.linspace(max(0,obj['x'] - .7*obj['w']), min(imsize[1], obj['x'] + .7*obj['w']), num_pos)
-	y = np.linspace(max(0,obj['y'] - .7*obj['h']), min(imsize[0], obj['y'] + .7*obj['h']), num_pos)
-	w = np.linspace(obj['w'] / mult, min(imsize[1], obj['w'] * mult), num_pos)
-	h = np.linspace(obj['h'] / mult, min(imsize[0], obj['h'] * mult), num_pos)
-		
-	x,y,w,h = np.meshgrid(x,y,w,h)
-	x,y,w,h = x.reshape((-1,1)), y.reshape((-1,1)), w.reshape((-1,1)), h.reshape((-1,1))
-	boxes = np.concatenate((x,y,w,h), axis=1)
-
-	boxes[:,0] = np.maximum(0., np.minimum(imsize[1], boxes[:,0]))
-	boxes[:,1] = np.maximum(0., np.minimum(imsize[0], boxes[:,1]))
-	idx = boxes[:,0] + boxes[:,2] > imsize[1]
-	boxes[idx,2] = imsize[1] - boxes[idx,0]
-	idx = boxes[:,1] + boxes[:,3] > imsize[0]
-	boxes[idx,3] = imsize[0] - boxes[idx,1]
-
-	return boxes
-
-def _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2):
-	boxes = None
-	for i in range(objs.__len__()):
-		new_boxes = _generate_boxes_from_obj(objs[i], imsize, num_pos, num_scale, mult)
-		if boxes is None:
-			boxes = new_boxes
-		else:
-			boxes = np.concatenate((boxes, new_boxes), axis=0)
-	return boxes
-
-def _boxes_as_annotations(boxes, obj=None):
-	objs = []
+def format_boxes(annotation):
+	boxes = np.zeros((annotation.__len__(),4))
 	for i in range(boxes.shape[0]):
-		box = boxes[i,:]
-		new_obj = {}
-		new_obj['xim'], new_obj['yim'], new_obj['wim'], new_obj['him'] = box[0], box[1], box[2], box[3]
-		if obj is not None:
-			new_obj['x'] = obj['x'] - new_obj['xim']
-			new_obj['y'] = obj['y'] - new_obj['yim']
-			new_obj['w'], new_obj['h'] = obj['w'], obj['h']
-			new_obj['label'] = obj['label']
-		else:
-			new_obj['label'] = 'nothing'
-		objs.append(new_obj)
-	return objs
+		boxes[i] = [annotation[i]['x'], annotation[i]['y'], annotation[i]['w'], annotation[i]['h']]
+	return boxes
 
-def _calc_overlap(boxes, gt_boxes):
-		xi = np.maximum(boxes[:,0], gt_boxes[:,0])
-		yi = np.maximum(boxes[:,1], gt_boxes[:,1])
-		xf = np.minimum(boxes[:,0] + boxes[:,2], gt_boxes[:,0] + gt_boxes[:,2])
-		yf = np.minimum(boxes[:,1] + boxes[:,3], gt_boxes[:,1] + gt_boxes[:,3])
-		w, h = np.maximum(0., xf - xi), np.maximum(0., yf - yi)
-		isec = w * h
-		boxes_size, gt_boxes_size = np.prod(boxes[:,2:], axis=1), np.prod(gt_boxes[:,2:], axis=1)
-		union = boxes_size + gt_boxes_size - isec
-		return isec / union, isec / gt_boxes_size
+def generate_proposal_boxes(boxes, n_proposals=1000):
+	'''
+	Generate proposal regions using boxes; boxes should be 
+	an Nx4 matrix, were boxes[i] = [x,y,w,h]
+	
+	N - number of proposals per box
+	'''
+	
+	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
+	proposal = np.zeros((n_proposals, 4))
+	n_pos = int(0.25 * n_proposals)
+	n_neg = n_proposals - n_pos
+	for i in range(boxes.shape[0]):
+		# positive box examples
+		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/4) + (2./4) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/4) + (2./4) * boxes[i,3] * npr.rand(n_pos)
+		proposal[:n_pos,2] = (3./4) * boxes[i,2] + (2./4) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,3] = (3./4) * boxes[i,3] + (2./4) * boxes[i,3] * npr.rand(n_pos)
+		
+		# negative examples
+		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/2) + boxes[i,2] * npr.rand(n_neg)
+		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/2) + boxes[i,3] * npr.rand(n_neg)
+		proposal[n_pos:,2] = boxes[i,2]/2 + (3./2 * boxes[i,2]) * npr.rand(n_neg)
+		proposal[n_pos:,3] = boxes[i,3]/2 + (3./2 * boxes[i,3]) * npr.rand(n_neg)
+		
+		proposals[i*n_proposals:(i+1)*n_proposals] = proposal
+	
+	return proposals
 
-def _find_valid_boxes(
-		objs, boxes, 
-		imsize,
-		min_overlap=.5,
-		max_obj_overlap=.3,
-		min_neg_overlap=.1,
-		min_obj_size=20*20,
-		N=100, 
-		neg=.75
+def find_valid_boxes(boxes, proposals):
+	'''
+	from the proposals, find the valid negative/positive examples
+	'''
+	boxes = boxes.reshape((1,) + boxes.shape)
+	proposals = proposals.reshape(proposals.shape + (1,))
+	
+	# calculate iou
+	xi = np.maximum(boxes[:,:,0], proposals[:,0])
+	yi = np.maximum(boxes[:,:,1], proposals[:,1])
+	xf = np.minimum(boxes[:,:,[0,2]].sum(axis=2), proposals[:,[0,2]].sum(axis=1))
+	yf = np.minimum(boxes[:,:,[1,3]].sum(axis=2), proposals[:,[1,3]].sum(axis=1))
+	
+	w, h = np.maximum(xf - xi, 0.), np.maximum(yf - yi, 0.)
+	
+	isec = w * h
+	union = boxes[:,:,2:].prod(axis=2) + proposals[:,2:].prod(axis=1) - isec
+	
+	iou = isec / union
+	
+	overlap = proposals[:,2:].prod(axis=1) / union
+	
+	neg_idx = np.bitwise_and(
+		np.bitwise_and(
+			iou > 0.1, 
+			iou < 0.5
+		),
+		overlap < 0.3
+	) 
+	
+	pos_idx = iou > 0.5
+	
+	# get any box which doesn't overlap with any box
+	neg_idx = np.sum(neg_idx, axis=1) >= 1
+	
+	# filter out boxes that have an iou > .5 with more than one object
+	pos_idx = np.sum(pos_idx, axis=1) == 1
+	
+	indices = np.arange(proposals.shape[0])
+	
+	# get object index for matched object
+	obj_idx = iou[pos_idx,:].argmax(axis=1)
+	
+	return indices[neg_idx], indices[pos_idx], obj_idx
+
+def colour_space_augmentation(im):
+	im = color.rgb2hsv(im)
+	im[:,:,2] *= (0.2 * npr.rand() + 0.9)
+	idx = im[:,:,2] > 1.0
+	im[:,:,2][idx] = 1.0
+	im = color.hsv2rgb(im)
+	return im
+
+def generate_example(
+		im,
+		input_shape,
+		num_classes,
+		label_to_num,
+		annotation,
+		proposals,
+		indices,
+		n_neg,
+		n_pos
 	):
-	neg_rois = int(np.ceil(neg * N))
-	pos_rois = N - neg_rois
-#	 pos_rois_per_obj = int(np.ceil(float(pos_rois) / objs.__len__()))
-
-	boxes = boxes.reshape(boxes.shape + (1,))
-
-	gt_boxes = np.zeros((1, 4, objs.__len__()))
-	for i in range(objs.__len__()):
-		gt_boxes[0, :, i] = [objs[i]['x'], objs[i]['y'], objs[i]['w'], objs[i]['h']]
-
-	iou, overlap = _calc_overlap(boxes, gt_boxes)
-
-	max_overlap = overlap.max(axis=1)
-	max_iou = iou.max(axis=1)
-	max_iou_idx = iou.argmax(axis=1)
-	sorted_overlap = np.sort(iou, axis=1)[:,::-1]
-	idx = np.arange(boxes.shape[0])
-	box_size = boxes[:,2:4,0].prod(axis=1)
-
-	'''
-	Calculate boxes whose max overlap is between .1 and .5, these constitute negative examples.
-	'''
-	neg_idx = np.bitwise_and(max_overlap > min_neg_overlap, max_overlap < min_overlap)
-	neg_examples = boxes[np.random.choice(idx[neg_idx], size=neg_rois, replace=False)]
-
-	valid_overlap_idx = max_iou > min_overlap
-	big_enough_idx = box_size > min_obj_size
-	if sorted_overlap.shape[1] > 1:
-		distinct_box_idx = sorted_overlap[:,1] < max_obj_overlap
-	else:
-		distinct_box_idx = np.ones(neg_idx.shape, dtype=np.bool)
-
-	'''
-	Loop over each object in image and find rois which do not overlap with other objects too much
-	while overlapping the object of interest a specified minimum amount.
-	'''
-	valid_example_idx = np.bitwise_and(
-		np.bitwise_and(valid_overlap_idx, distinct_box_idx),
-		big_enough_idx
-	)
-
-	if valid_example_idx.nonzero()[0].size > 0:
-		pos_examples = np.concatenate((boxes[:,:,0], max_iou_idx.reshape((-1,1))), axis=1)
-		pos_examples = pos_examples[np.random.choice(idx[valid_example_idx], size=pos_rois, replace=False)]
-		return neg_examples, pos_examples
-	else:
-		return None, None
-
-def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano.config.floatX):
-	imsize = annotation['size']
-	objs = annotation['annotations']
+	neg_idx, pos_idx, obj_idx = indices
 	
-	X = np.zeros((objs.__len__(),3) + size, dtype=dtype)
-	labels = np.zeros((objs.__len__(), 4 + num_classes + 1))
+	neg_examples = proposals[neg_idx,:]
 	
-	im = imread(annotation['image'])
-	if im.dtype != dtype:
-		im = im.astype(dtype)
-	if im.shape.__len__() == 2:
-		im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
-	if im.shape[2] > 3:
-		im = im[:,:,:3]
-	if im.max() > 1:
-		im /= 255
+	X = np.zeros((n_neg + n_pos, 3) + input_shape, dtype=theano.config.floatX)
+	y = np.zeros((n_neg + n_pos, 4 + num_classes + 1), dtype=theano.config.floatX)
 	
-	for i in range(objs.__len__()):
-		obj = objs[i]
-		gtruth = np.zeros(4 + num_classes + 1, dtype=dtype)
-		gtruth[4 + label2num[obj['label']]] += 1
-		xim, yim, wim, him = obj['xim'], obj['yim'], obj['wim'], obj['him']
-		box = BoundingBox(xim, yim, xim + wim, yim + him)
-		subim = box.subimage(im)
+	try:
+		pos_choice = npr.choice(np.arange(pos_idx.size), size=n_pos, replace=False)
+	except:
+		print('Warning, positive examples sampled with replacement from proposal boxes.')
+		pos_choice = npr.choice(np.arange(pos_idx.size), size=n_pos, replace=True)
+	try:
+		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=False)
+	except:
+		print('Warning, positive examples sampled with replacement from proposal boxes.')
+		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=True)
+	
+	neg_idx, pos_idx, obj_idx = neg_idx[neg_choice], pos_idx[pos_choice], obj_idx[pos_choice]
+	
+	# generate negative examples
+	cls = np.zeros(num_classes + 1)
+	cls[-1] = 1.
+	coord = np.asarray([0.,0.,1.,1.])
+	for i in range(n_neg):
+		xi, yi = int(max(0,proposals[neg_idx[i],0])), int(max(0,proposals[neg_idx[i],1]))
+		xf = int(min(im.shape[1], proposals[neg_idx[i],[0,2]].sum()))
+		yf = int(min(im.shape[0], proposals[neg_idx[i],[1,3]].sum()))
+		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
+		y[i,:4] = coord
+		y[i,-(num_classes + 1):] = cls
+		X[i] = subim.swapaxes(2,1).swapaxes(1,0)
+	
+	cls[-1] = 0.
+	# generate positive examples
+	for i in range(n_pos):
+		xi, yi = int(max(0,proposals[pos_idx[i],0])), int(max(0,proposals[pos_idx[i],1]))
+		xf = int(min(im.shape[1], proposals[pos_idx[i],[0,2]].sum()))
+		yf = int(min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()))
+		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
+		coord[0] = (annotation[obj_idx[i]]['x'] - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2]
+		coord[1] = (annotation[obj_idx[i]]['y'] - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
+		coord[2] = np.log(float(annotation[obj_idx[i]]['w']) / proposals[pos_idx[i], 2])
+		coord[3] = np.log(float(annotation[obj_idx[i]]['h']) / proposals[pos_idx[i], 3])
+		cls[label_to_num[annotation[obj_idx[i]]['label']]] = 1.
+		X[i+n_neg] = subim.swapaxes(2,1).swapaxes(1,0)
+		y[i+n_neg,:4], y[i+n_neg,-(num_classes+1):] = coord, cls
+	
+	return X, y
 
-		# colour space augmentation
-		subim = color.rgb2hsv(subim)
-		subim[:,:,2] *= (0.6 * npr.rand() + 0.9)
-		idx = subim[:,:,2] > 1.0
-		subim[:,:,2][idx] = 1.0
-		subim = color.hsv2rgb(subim)
+def generate_data(
+		annotations,
+		input_shape,
+		num_classes,
+		label_to_num,
+		n_neg,
+		n_pos,
+		batch_size,
+		n_proposals=1500
+	):
+	if not isinstance(annotations, np.ndarray):
+		annotations = np.asarray(annotations)
+	npr.shuffle(annotations)
+	
+	for i in range(0,annotations.size,batch_size):
+		X = np.zeros(((n_neg + n_pos) * batch_size, 3) + input_shape, dtype=theano.config.floatX)
+		y = np.zeros(((n_neg + n_pos) * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+		for j in range(min(batch_size, annotations.size - i)):
+			idx = i + j
+			boxes = format_boxes(annotations[idx]['annotations'])
+			proposals = generate_proposal_boxes(boxes, N=n_proposals)
+			indices = find_valid_boxes(boxes, proposals)
+			im = format_image(imread(annotations[idx]['image']), dtype=theano.config.floatX)
+			X_j, y_j = generate_example(im, input_shape, num_classes, label_to_num, annotations[idx]['annotations'], proposals, indices, n_neg, n_pos)
+			X[j*(n_neg + n_pos):(j+1)*(n_neg + n_pos)] = X_j
+			y[j*(n_neg + n_pos):(j+1)*(n_neg + n_pos)] = y_j
+		X, y = X[:(j+1)*(n_neg + n_pos)], y[:(j+1)*(n_neg + n_pos)]
+		idx = np.arange(X.shape[0])
+		npr.shuffle(idx)
+		yield X[idx], y[idx]
 
-		# randomly rotate
-		flip_horz, flip_vert = npr.rand() > .5 ,npr.rand() > .5
-		if flip_horz:
-			subim = subim[:,::-1]
-		if flip_vert:
-			subim = subim[::-1,:]
+# def _gen_boxes(imsize, num_pos=20, num_scale=20):
+# 	x = np.linspace(0, imsize[1], num_pos)
+# 	y = np.linspace(0, imsize[0], num_pos)
+# 	w = np.linspace(0, imsize[1], num_scale)
+# 	h = np.linspace(0, imsize[0], num_scale)
+	
+# 	x,y,w,h = np.meshgrid(x,y,w,h)
+# 	x,y,w,h = x.reshape((-1,1)), y.reshape((-1,1)), w.reshape((-1,1)), h.reshape((-1,1))
+# 	boxes = np.concatenate((x,y,w,h), axis=1)
 
-		subim = resize(subim, size)
+# 	boxes[:,0] = np.maximum(0., np.minimum(imsize[0], boxes[:,0]))
+# 	boxes[:,1] = np.maximum(0., np.minimum(1, boxes[:,1]))
+# 	idx = boxes[:,0] + boxes[:,2] > imsize[1]
+# 	boxes[idx,2] = imsize[1]
+# 	idx = boxes[:,1] + boxes[:,3] > imsize[0]
+# 	boxes[idx,3] = imsize[0]
 
-		if obj['label'] != 'nothing':
-			x,y,w,h = obj['x'], obj['y'], obj['w'], obj['h']
+# 	return boxes
 
-			# flip coordinates
-			if flip_horz:
-				x = 1 - (x + w)
-			if flip_vert:
-				y = 1 - (y + h)
+# def _generate_boxes_from_obj(obj, imsize, num_pos=20, num_scale=20, mult=2):
+# 	x = np.linspace(max(0,obj['x'] - .7*obj['w']), min(imsize[1], obj['x'] + .7*obj['w']), num_pos)
+# 	y = np.linspace(max(0,obj['y'] - .7*obj['h']), min(imsize[0], obj['y'] + .7*obj['h']), num_pos)
+# 	w = np.linspace(obj['w'] / mult, min(imsize[1], obj['w'] * mult), num_pos)
+# 	h = np.linspace(obj['h'] / mult, min(imsize[0], obj['h'] * mult), num_pos)
+		
+# 	x,y,w,h = np.meshgrid(x,y,w,h)
+# 	x,y,w,h = x.reshape((-1,1)), y.reshape((-1,1)), w.reshape((-1,1)), h.reshape((-1,1))
+# 	boxes = np.concatenate((x,y,w,h), axis=1)
 
-			xscale, yscale = 1. / wim, 1. / him
-			x, y, w, h = x * xscale, y * yscale, np.log(w * xscale), np.log(h * yscale)
-			gtruth[:4] = [x, y, w, h]
-		labels[i] = gtruth
-		X[i] = subim.reshape((1,) + subim.shape).swapaxes(3,2).swapaxes(2,1)
-	return X, labels
+# 	boxes[:,0] = np.maximum(0., np.minimum(imsize[1], boxes[:,0]))
+# 	boxes[:,1] = np.maximum(0., np.minimum(imsize[0], boxes[:,1]))
+# 	idx = boxes[:,0] + boxes[:,2] > imsize[1]
+# 	boxes[idx,2] = imsize[1] - boxes[idx,0]
+# 	idx = boxes[:,1] + boxes[:,3] > imsize[0]
+# 	boxes[idx,3] = imsize[0] - boxes[idx,1]
 
-def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=theano.config.floatX, N=100, neg=.75, min_obj_size=30*30):
-	'''
-	'''
-	imsize = None
-	np.random.shuffle(annotations)
-	for i in tqdm(range(0,annotations.__len__(),num_batch)):
-		X,y = None, None
-		for j in range(min(annotations.__len__() - i, num_batch)):
-			annotation = annotations[i + j]
-			new_annotation = {}
-			new_annotation['image'] = annotation['image']
-			new_annotation['size'] = annotation['size']
-			imsize = annotation['size']
+# 	return boxes
 
-			objs = annotation['annotations']
-			new_objs = []
+# def _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2):
+# 	boxes = None
+# 	for i in range(objs.__len__()):
+# 		new_boxes = _generate_boxes_from_obj(objs[i], imsize, num_pos, num_scale, mult)
+# 		if boxes is None:
+# 			boxes = new_boxes
+# 		else:
+# 			boxes = np.concatenate((boxes, new_boxes), axis=0)
+# 	return boxes
 
-			boxes = _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2)
+# def _boxes_as_annotations(boxes, obj=None):
+# 	objs = []
+# 	for i in range(boxes.shape[0]):
+# 		box = boxes[i,:]
+# 		new_obj = {}
+# 		new_obj['xim'], new_obj['yim'], new_obj['wim'], new_obj['him'] = box[0], box[1], box[2], box[3]
+# 		if obj is not None:
+# 			new_obj['x'] = obj['x'] - new_obj['xim']
+# 			new_obj['y'] = obj['y'] - new_obj['yim']
+# 			new_obj['w'], new_obj['h'] = obj['w'], obj['h']
+# 			new_obj['label'] = obj['label']
+# 		else:
+# 			new_obj['label'] = 'nothing'
+# 		objs.append(new_obj)
+# 	return objs
 
-			neg_examples, pos_examples = _find_valid_boxes(
-				objs,
-				boxes,
-				imsize,
-				N=N,
-				neg=neg,
-				min_obj_size=min_obj_size
-			)
+# def _calc_overlap(boxes, gt_boxes):
+# 		xi = np.maximum(boxes[:,0], gt_boxes[:,0])
+# 		yi = np.maximum(boxes[:,1], gt_boxes[:,1])
+# 		xf = np.minimum(boxes[:,0] + boxes[:,2], gt_boxes[:,0] + gt_boxes[:,2])
+# 		yf = np.minimum(boxes[:,1] + boxes[:,3], gt_boxes[:,1] + gt_boxes[:,3])
+# 		w, h = np.maximum(0., xf - xi), np.maximum(0., yf - yi)
+# 		isec = w * h
+# 		boxes_size, gt_boxes_size = np.prod(boxes[:,2:], axis=1), np.prod(gt_boxes[:,2:], axis=1)
+# 		union = boxes_size + gt_boxes_size - isec
+# 		return isec / union, isec / gt_boxes_size
 
-			if neg_examples is not None:
-				new_objs.extend(_boxes_as_annotations(neg_examples))
-				for k in range(objs.__len__()):
-					idx = np.equal(pos_examples[:,-1], k)
-					if idx.nonzero() > 0:
-						new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[k]))
-				new_annotation['annotations'] = new_objs
+# def _find_valid_boxes(
+# 		objs, boxes, 
+# 		imsize,
+# 		min_overlap=.5,
+# 		max_obj_overlap=.3,
+# 		min_neg_overlap=.1,
+# 		min_obj_size=20*20,
+# 		N=100, 
+# 		neg=.75
+# 	):
+# 	neg_rois = int(np.ceil(neg * N))
+# 	pos_rois = N - neg_rois
+# #	 pos_rois_per_obj = int(np.ceil(float(pos_rois) / objs.__len__()))
 
-				Xim, yim = _data_from_annotation(
-					new_annotation,
-					size,
-					num_classes,
-					label2num
-				)
-				if X is None:
-					X,y = Xim, yim
-				else:
-					X = np.concatenate((X,Xim), axis=0)
-					y = np.concatenate((y,yim), axis=0)
+# 	boxes = boxes.reshape(boxes.shape + (1,))
 
-		if X is not None:
-			idx = np.arange(X.shape[0])
-			np.random.shuffle(idx)
-			yield X[idx].astype(dtype), y[idx].astype(dtype)
+# 	gt_boxes = np.zeros((1, 4, objs.__len__()))
+# 	for i in range(objs.__len__()):
+# 		gt_boxes[0, :, i] = [objs[i]['x'], objs[i]['y'], objs[i]['w'], objs[i]['h']]
+
+# 	iou, overlap = _calc_overlap(boxes, gt_boxes)
+
+# 	max_overlap = overlap.max(axis=1)
+# 	max_iou = iou.max(axis=1)
+# 	max_iou_idx = iou.argmax(axis=1)
+# 	sorted_overlap = np.sort(iou, axis=1)[:,::-1]
+# 	idx = np.arange(boxes.shape[0])
+# 	box_size = boxes[:,2:4,0].prod(axis=1)
+
+# 	'''
+# 	Calculate boxes whose max overlap is between .1 and .5, these constitute negative examples.
+# 	'''
+# 	neg_idx = np.bitwise_and(max_overlap > min_neg_overlap, max_overlap < min_overlap)
+# 	neg_examples = boxes[np.random.choice(idx[neg_idx], size=neg_rois, replace=False)]
+
+# 	valid_overlap_idx = max_iou > min_overlap
+# 	big_enough_idx = box_size > min_obj_size
+# 	if sorted_overlap.shape[1] > 1:
+# 		distinct_box_idx = sorted_overlap[:,1] < max_obj_overlap
+# 	else:
+# 		distinct_box_idx = np.ones(neg_idx.shape, dtype=np.bool)
+
+# 	'''
+# 	Loop over each object in image and find rois which do not overlap with other objects too much
+# 	while overlapping the object of interest a specified minimum amount.
+# 	'''
+# 	valid_example_idx = np.bitwise_and(
+# 		np.bitwise_and(valid_overlap_idx, distinct_box_idx),
+# 		big_enough_idx
+# 	)
+
+# 	if valid_example_idx.nonzero()[0].size > 0:
+# 		pos_examples = np.concatenate((boxes[:,:,0], max_iou_idx.reshape((-1,1))), axis=1)
+# 		pos_examples = pos_examples[np.random.choice(idx[valid_example_idx], size=pos_rois, replace=False)]
+# 		return neg_examples, pos_examples
+# 	else:
+# 		return None, None
+
+# def _data_from_annotation(annotation, size, num_classes, label2num, dtype=theano.config.floatX):
+# 	imsize = annotation['size']
+# 	objs = annotation['annotations']
+	
+# 	X = np.zeros((objs.__len__(),3) + size, dtype=dtype)
+# 	labels = np.zeros((objs.__len__(), 4 + num_classes + 1))
+	
+# 	im = imread(annotation['image'])
+# 	if im.dtype != dtype:
+# 		im = im.astype(dtype)
+# 	if im.shape.__len__() == 2:
+# 		im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
+# 	if im.shape[2] > 3:
+# 		im = im[:,:,:3]
+# 	if im.max() > 1:
+# 		im /= 255
+	
+# 	for i in range(objs.__len__()):
+# 		obj = objs[i]
+# 		gtruth = np.zeros(4 + num_classes + 1, dtype=dtype)
+# 		gtruth[4 + label2num[obj['label']]] += 1
+# 		xim, yim, wim, him = obj['xim'], obj['yim'], obj['wim'], obj['him']
+# 		box = BoundingBox(xim, yim, xim + wim, yim + him)
+# 		subim = box.subimage(im)
+
+# 		# colour space augmentation
+# 		subim = color.rgb2hsv(subim)
+# 		subim[:,:,2] *= (0.6 * npr.rand() + 0.9)
+# 		idx = subim[:,:,2] > 1.0
+# 		subim[:,:,2][idx] = 1.0
+# 		subim = color.hsv2rgb(subim)
+
+# 		# randomly rotate
+# 		flip_horz, flip_vert = npr.rand() > .5 ,npr.rand() > .5
+# 		if flip_horz:
+# 			subim = subim[:,::-1]
+# 		if flip_vert:
+# 			subim = subim[::-1,:]
+
+# 		subim = resize(subim, size)
+
+# 		if obj['label'] != 'nothing':
+# 			x,y,w,h = obj['x'], obj['y'], obj['w'], obj['h']
+
+# 			# flip coordinates
+# 			if flip_horz:
+# 				x = 1 - (x + w)
+# 			if flip_vert:
+# 				y = 1 - (y + h)
+
+# 			xscale, yscale = 1. / wim, 1. / him
+# 			x, y, w, h = x * xscale, y * yscale, np.log(w * xscale), np.log(h * yscale)
+# 			gtruth[:4] = [x, y, w, h]
+# 		labels[i] = gtruth
+# 		X[i] = subim.reshape((1,) + subim.shape).swapaxes(3,2).swapaxes(2,1)
+# 	return X, labels
+
+# def generate_rois(annotations, size, num_classes, label2num, num_batch=2, dtype=theano.config.floatX, N=100, neg=.75, min_obj_size=30*30):
+# 	'''
+# 	'''
+# 	imsize = None
+# 	np.random.shuffle(annotations)
+# 	for i in tqdm(range(0,annotations.__len__(),num_batch)):
+# 		X,y = None, None
+# 		for j in range(min(annotations.__len__() - i, num_batch)):
+# 			annotation = annotations[i + j]
+# 			new_annotation = {}
+# 			new_annotation['image'] = annotation['image']
+# 			new_annotation['size'] = annotation['size']
+# 			imsize = annotation['size']
+
+# 			objs = annotation['annotations']
+# 			new_objs = []
+
+# 			boxes = _generate_boxes(objs, imsize, num_pos=20, num_scale=20, mult=2)
+
+# 			neg_examples, pos_examples = _find_valid_boxes(
+# 				objs,
+# 				boxes,
+# 				imsize,
+# 				N=N,
+# 				neg=neg,
+# 				min_obj_size=min_obj_size
+# 			)
+
+# 			if neg_examples is not None:
+# 				new_objs.extend(_boxes_as_annotations(neg_examples))
+# 				for k in range(objs.__len__()):
+# 					idx = np.equal(pos_examples[:,-1], k)
+# 					if idx.nonzero() > 0:
+# 						new_objs.extend(_boxes_as_annotations(pos_examples[idx,:4], objs[k]))
+# 				new_annotation['annotations'] = new_objs
+
+# 				Xim, yim = _data_from_annotation(
+# 					new_annotation,
+# 					size,
+# 					num_classes,
+# 					label2num
+# 				)
+# 				if X is None:
+# 					X,y = Xim, yim
+# 				else:
+# 					X = np.concatenate((X,Xim), axis=0)
+# 					y = np.concatenate((y,yim), axis=0)
+
+# 		if X is not None:
+# 			idx = np.arange(X.shape[0])
+# 			np.random.shuffle(idx)
+# 			yield X[idx].astype(dtype), y[idx].astype(dtype)
 
