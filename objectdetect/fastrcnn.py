@@ -141,25 +141,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 	def load_model(self, weights):
 		self.set_params(weights)
 
-	def train(
-			self,
-			train_annotations=None,
-			test_annotations=None,
-			label_dict=None,
-			print_obj=None,
-			update_fn=rmsprop,
-			num_batch=2,
-			N=20,
-			neg=.5,
-			num_batch_test=5,
-			N_test=10,
-			neg_test=.5,
-			lr=1e-4,
-			momentum=0.9,
-			lmbda=1.,
-			hyperparameters={},
-		):
-
+	def train(self):
 		# get settings for settings object
 		train_annotations = self.settings.train_annotations
 		test_annotations = self.settings.test_annotations
@@ -177,7 +159,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			print_obj.println('Getting cost...')
 			cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
 			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
-
+			
 			if lmbda == 0:
 				params = self.get_params()[:-2]
 			else:
@@ -357,7 +339,7 @@ def generate_proposal_boxes(boxes, n_proposals=1000):
 	
 	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
 	proposal = np.zeros((n_proposals, 4))
-	n_pos = int(0.25 * n_proposals)
+	n_pos = int(0.5 * n_proposals)
 	n_neg = n_proposals - n_pos
 	for i in range(boxes.shape[0]):
 		# positive box examples
@@ -498,7 +480,7 @@ def generate_data(
 		n_neg=9,
 		n_pos=3,
 		batch_size=2,
-		n_proposals=1500
+		n_proposals=2000
 	):
 	if not isinstance(annotations, np.ndarray):
 		annotations = np.asarray(annotations)
@@ -510,7 +492,7 @@ def generate_data(
 		for j in range(min(batch_size, annotations.size - i)):
 			idx = i + j
 			boxes = format_boxes(annotations[idx]['annotations'])
-			proposals = generate_proposal_boxes(boxes, N=n_proposals)
+			proposals = generate_proposal_boxes(boxes, n_proposals=n_proposals)
 			indices = find_valid_boxes(boxes, proposals)
 			im = format_image(imread(annotations[idx]['image']), dtype=theano.config.floatX)
 			X_j, y_j = generate_example(im, input_shape, num_classes, label_to_num, annotations[idx]['annotations'], proposals, indices, n_neg, n_pos)
