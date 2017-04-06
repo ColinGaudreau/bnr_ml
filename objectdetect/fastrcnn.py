@@ -466,10 +466,21 @@ def generate_example(
 		xf = int(min(im.shape[1], proposals[pos_idx[i],[0,2]].sum()))
 		yf = int(min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()))
 		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
-		coord[0] = (annotation[obj_idx[i]]['x'] + annotation[obj_idx[i]]['w']/2 - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2] # get center of object
-		coord[1] = (annotation[obj_idx[i]]['y'] + annotation[obj_idx[i]]['h']/2 - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
-		coord[2] = np.log(float(annotation[obj_idx[i]]['w']) / proposals[pos_idx[i], 2])
-		coord[3] = np.log(float(annotation[obj_idx[i]]['h']) / proposals[pos_idx[i], 3])
+
+		x = (annotation[obj_idx[i]]['x'] + annotation[obj_idx[i]]['w']/2 - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2]
+		y = (annotation[obj_idx[i]]['y'] + annotation[obj_idx[i]]['h']/2 - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
+		log_w, log_h = np.log(float(annotation[obj_idx[i]]['w']) / proposals[pos_idx[i], 2]), np.log(float(annotation[obj_idx[i]]['h']) / proposals[pos_idx[i], 3])
+
+		# flip vertically randomly
+		if npr.rand() < 0.5:
+			subim = subim[::-1,:]
+			y = 1. - y
+		# flip horizontally
+		if npr.rand() < 0.5:
+			subim = subim[:,::-1]
+			x = 1. - x
+
+		coord[:4] = [x, y, log_w, log_h]
 		cls[label_to_num[annotation[obj_idx[i]]['label']]] = 1.
 		X[i+n_neg] = subim.swapaxes(2,1).swapaxes(1,0)
 		y[i+n_neg,:4], y[i+n_neg,-(num_classes+1):] = coord, cls
