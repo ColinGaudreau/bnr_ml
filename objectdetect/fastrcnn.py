@@ -385,8 +385,8 @@ def find_valid_boxes(boxes, proposals):
 			iou > 0.1, 
 			iou < 0.5
 		),
-		overlap < 0.3
-	) 
+		overlap < .3
+	)
 	
 	pos_idx = iou > 0.5
 	
@@ -491,15 +491,15 @@ def generate_data(
 	npr.shuffle(annotations)
 	n_total = n_neg + n_pos
 	cnt = 0
+	X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
+        y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
-		X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-		y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 		boxes = format_boxes(annotations[i]['annotations'])
 		proposals = generate_proposal_boxes(boxes, n_proposals=n_proposals)
 		indices = find_valid_boxes(boxes, proposals)
-		im = format_image(imread(annotations[idx]['image']), dtype=theano.config.floatX)
-		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[idx]['annotations'], proposals, indices, n_neg, n_pos)
+		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
+		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[i]['annotations'], proposals, indices, n_neg, n_pos)
 		if data is not None:
 			X[cnt*n_total:(cnt+1)*n_total], y[cnt*n_total:(cnt+1)*n_total] = data[0], data[1]
 			cnt += 1
@@ -510,4 +510,6 @@ def generate_data(
 				idx = np.arange(X.shape[0])
 				npr.shuffle(idx)
 				yield X[idx], y[idx]
+			X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
+                	y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 			cnt = 0
