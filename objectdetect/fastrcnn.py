@@ -330,38 +330,77 @@ def format_boxes(annotation):
 		boxes[i] = [annotation[i]['x'], annotation[i]['y'], annotation[i]['w'], annotation[i]['h']]
 	return boxes
 
-def generate_proposal_boxes(boxes, n_proposals=1000):
+def generate_proposal_boxes(boxes, n_box=20, min_size=.05 * .05):
 	'''
 	Generate proposal regions using boxes; boxes should be 
 	an Nx4 matrix, were boxes[i] = [x,y,w,h]
 	
 	N - number of proposals per box
 	'''
+	proposals = np.zeros((0,4))
 	
-	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
-	proposal = np.zeros((n_proposals, 4))
-	n_pos = int(0.25 * n_proposals)
-	n_neg = n_proposals - n_pos
-
-	# define factor for creating neg/pos examples boxes
-	pos_fact = 4.
-	neg_fact = 2.
-
 	for i in range(boxes.shape[0]):
-		# positive box examples
-		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/pos_fact) + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/pos_fact) + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
-		proposal[:n_pos,2] = (pos_fact-1)/pos_fact * boxes[i,2] + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,3] = (pos_fact-1)/pos_fact * boxes[i,3] + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
-		# negative examples
-		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/neg_fact) + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
-		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/neg_fact) + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
-		proposal[n_pos:,2] = (neg_fact-1)/neg_fact * boxes[i,2] + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
-		proposal[n_pos:,3] = (neg_fact-1)/neg_fact * boxes[i,3] + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
+		box = boxes[0]
+		xi_b, yi_b, w_b, h_b = box[0], box[1], box[2], box[3]
+		xf_b, yf_b = xi_b + w_b, yi_b + h_b
+
+		xi, xf = np.linspace(xi_b, 1., n_box), np.linspace(0, xi_b + (3.*w_b)/4, n_box)
+		yi, yf = np.linspace(yi_b, 1., n_box), np.linspace(0, yi_b + (3.*h_b)/4, n_box)
 		
-		proposals[i*n_proposals:(i+1)*n_proposals] = proposal
+		xi, yi, xf, yf = np.meshgrid(xi, yi, xf, yf)
+		xi, yi, xf, yf = xi.flatten(), yi.flatten(), xf.flatten(), yf.flatten()
+		
+		valid = np.bitwise_and(
+			np.bitwise_and(xf > xi, yf > yi),
+			(xf-xi) * (yf-yi) > min_size
+		)
+		
+		proposal = np.concatenate(
+			(
+				xi[valid].reshape((-1,1)),
+				yi[valid].reshape((-1,1)),
+				(xf-xi)[valid].reshape((-1,1)),
+				(yf-yi)[valid].reshape((-1,1))
+			),
+			axis=1
+		)
+		
+		proposals = np.concatenate((proposals, proposal), axis=0)
 	
 	return proposals
+
+# def generate_proposal_boxes(boxes, n_proposals=1000):
+# 	'''
+# 	Generate proposal regions using boxes; boxes should be 
+# 	an Nx4 matrix, were boxes[i] = [x,y,w,h]
+	
+# 	N - number of proposals per box
+# 	'''
+	
+# 	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
+# 	proposal = np.zeros((n_proposals, 4))
+# 	n_pos = int(0.25 * n_proposals)
+# 	n_neg = n_proposals - n_pos
+
+# 	# define factor for creating neg/pos examples boxes
+# 	pos_fact = 4.
+# 	neg_fact = 2.
+
+# 	for i in range(boxes.shape[0]):
+# 		# positive box examples
+# 		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/pos_fact) + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
+# 		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/pos_fact) + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
+# 		proposal[:n_pos,2] = (pos_fact-1)/pos_fact * boxes[i,2] + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
+# 		proposal[:n_pos,3] = (pos_fact-1)/pos_fact * boxes[i,3] + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
+# 		# negative examples
+# 		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/neg_fact) + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
+# 		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/neg_fact) + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
+# 		proposal[n_pos:,2] = (neg_fact-1)/neg_fact * boxes[i,2] + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
+# 		proposal[n_pos:,3] = (neg_fact-1)/neg_fact * boxes[i,3] + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
+		
+# 		proposals[i*n_proposals:(i+1)*n_proposals] = proposal
+	
+# 	return proposals
 
 def find_valid_boxes(boxes, proposals):
 	'''
@@ -508,7 +547,7 @@ def generate_data(
 		n_neg=9,
 		n_pos=3,
 		batch_size=2,
-		n_proposals=2000
+		n_box=20
 	):
 	if not isinstance(annotations, np.ndarray):
 		annotations = np.asarray(annotations)
@@ -516,11 +555,11 @@ def generate_data(
 	n_total = n_neg + n_pos
 	cnt = 0
 	X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-        y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+		y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
 		boxes = format_boxes(annotations[i]['annotations'])
-		proposals = generate_proposal_boxes(boxes, n_proposals=n_proposals)
+		proposals = generate_proposal_boxes(boxes, n_box=n_box)
 		indices = find_valid_boxes(boxes, proposals)
 		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
 		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[i]['annotations'], proposals, indices, n_neg, n_pos)
@@ -535,5 +574,5 @@ def generate_data(
 				npr.shuffle(idx)
 				yield X[idx], y[idx]
 			X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-                	y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+					y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 			cnt = 0
