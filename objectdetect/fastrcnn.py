@@ -342,17 +342,22 @@ def generate_proposal_boxes(boxes, n_proposals=1000):
 	proposal = np.zeros((n_proposals, 4))
 	n_pos = int(0.25 * n_proposals)
 	n_neg = n_proposals - n_pos
+
+	# define factor for creating neg/pos examples boxes
+	pos_fact = 4.
+	neg_fact = 2.
+
 	for i in range(boxes.shape[0]):
 		# positive box examples
-		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/5) + (2./5) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/5) + (2./5) * boxes[i,3] * npr.rand(n_pos)
-		proposal[:n_pos,2] = (4./5) * boxes[i,2] + (2./5) * boxes[i,2] * npr.rand(n_pos)
-		proposal[:n_pos,3] = (4./5) * boxes[i,3] + (2./5) * boxes[i,3] * npr.rand(n_pos)
+		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/pos_fact) + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/pos_fact) + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
+		proposal[:n_pos,2] = (pos_fact-1)/pos_fact * boxes[i,2] + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
+		proposal[:n_pos,3] = (pos_fact-1)/pos_fact * boxes[i,3] + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
 		# negative examples
-		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/2) + boxes[i,2] * npr.rand(n_neg)
-		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/2) + boxes[i,3] * npr.rand(n_neg)
-		proposal[n_pos:,2] = boxes[i,2]/2 + (3./2 * boxes[i,2]) * npr.rand(n_neg)
-		proposal[n_pos:,3] = boxes[i,3]/2 + (3./2 * boxes[i,3]) * npr.rand(n_neg)
+		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/neg_fact) + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
+		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/neg_fact) + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
+		proposal[n_pos:,2] = (neg_fact-1)/neg_fact * boxes[i,2] + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
+		proposal[n_pos:,3] = (neg_fact-1)/neg_fact * boxes[i,3] + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
 		
 		proposals[i*n_proposals:(i+1)*n_proposals] = proposal
 	
@@ -378,20 +383,22 @@ def find_valid_boxes(boxes, proposals):
 	
 	iou = isec / union
 	
-	overlap = proposals[:,2:].prod(axis=1) / union
+	overlap = isec / boxes[:,:,2:].prod(axis=2)
 	
 	neg_idx = np.bitwise_and(
 		np.bitwise_and(
 			iou > 0.1, 
 			iou < 0.5
 		),
-		overlap < .3
+		overlap < 1.
 	)
 	
 	pos_idx = iou > 0.5
 	
 	# get any box which doesn't overlap with any box
-	neg_idx = np.sum(neg_idx, axis=1) >= 1
+	neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) >= 1, np.sum(iou < .5, axis=1) == iou.shape[1])
+	# neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) > 0, np.sum(overlap < .4, axis=1) == iou.shape[1])
+	#neg_idx = np.sum(neg_idx, axis=1) >= 1
 	
 	# filter out boxes that have an iou > .5 with more than one object
 	pos_idx = np.sum(pos_idx, axis=1) == 1
@@ -441,7 +448,7 @@ def generate_example(
 	try:
 		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=False)
 	except:
-		print('Warning, positive examples sampled with replacement from proposal boxes.')
+		print('Warning, negative examples sampled with replacement from proposal boxes.')
 		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=True)
 	
 	neg_idx, pos_idx, obj_idx = neg_idx[neg_choice], pos_idx[pos_choice], obj_idx[pos_choice]
@@ -455,6 +462,12 @@ def generate_example(
 		xf = int(min(im.shape[1], proposals[neg_idx[i],[0,2]].sum()))
 		yf = int(min(im.shape[0], proposals[neg_idx[i],[1,3]].sum()))
 		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
+
+		if npr.rand() < 0.5:
+			subim = subim[::-1,:]
+		if npr.rand() < 0.5:
+			subim = subim[:,::-1]
+
 		y[i,:4] = coord
 		y[i,-(num_classes + 1):] = cls
 		X[i] = subim.swapaxes(2,1).swapaxes(1,0)
@@ -467,20 +480,20 @@ def generate_example(
 		yf = int(min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()))
 		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
 
-		x = (annotation[obj_idx[i]]['x'] + annotation[obj_idx[i]]['w']/2 - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2]
-		y = (annotation[obj_idx[i]]['y'] + annotation[obj_idx[i]]['h']/2 - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
+		x_box = (annotation[obj_idx[i]]['x'] + annotation[obj_idx[i]]['w']/2 - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2]
+		y_box = (annotation[obj_idx[i]]['y'] + annotation[obj_idx[i]]['h']/2 - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
 		log_w, log_h = np.log(float(annotation[obj_idx[i]]['w']) / proposals[pos_idx[i], 2]), np.log(float(annotation[obj_idx[i]]['h']) / proposals[pos_idx[i], 3])
 
 		# flip vertically randomly
 		if npr.rand() < 0.5:
 			subim = subim[::-1,:]
-			y = 1. - y
+			y_box = 1. - y_box
 		# flip horizontally
 		if npr.rand() < 0.5:
 			subim = subim[:,::-1]
-			x = 1. - x
+			x_box = 1. - x_box
 
-		coord[:4] = [x, y, log_w, log_h]
+		coord[:4] = [x_box, y_box, log_w, log_h]
 		cls[label_to_num[annotation[obj_idx[i]]['label']]] = 1.
 		X[i+n_neg] = subim.swapaxes(2,1).swapaxes(1,0)
 		y[i+n_neg,:4], y[i+n_neg,-(num_classes+1):] = coord, cls
