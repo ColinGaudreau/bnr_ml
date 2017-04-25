@@ -330,7 +330,7 @@ def format_boxes(annotation):
 		boxes[i] = [annotation[i]['x'], annotation[i]['y'], annotation[i]['w'], annotation[i]['h']]
 	return boxes
 
-def generate_proposal_boxes(boxes, n_box=20, min_size=.05 * .05):
+def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
 	'''
 	Generate proposal regions using boxes; boxes should be 
 	an Nx4 matrix, were boxes[i] = [x,y,w,h]
@@ -340,12 +340,12 @@ def generate_proposal_boxes(boxes, n_box=20, min_size=.05 * .05):
 	proposals = np.zeros((0,4))
 	
 	for i in range(boxes.shape[0]):
-		box = boxes[0]
+		box = boxes[i]
 		xi_b, yi_b, w_b, h_b = box[0], box[1], box[2], box[3]
 		xf_b, yf_b = xi_b + w_b, yi_b + h_b
-
-		xi, xf = np.linspace(xi_b, 1., n_box), np.linspace(0, xi_b + (3.*w_b)/4, n_box)
-		yi, yf = np.linspace(yi_b, 1., n_box), np.linspace(0, yi_b + (3.*h_b)/4, n_box)
+		
+		xi, xf = np.linspace(0, xi_b + (3.*w_b)/4, n_box), np.linspace(xi_b, image_size[1], n_box)
+		yi, yf = np.linspace(0, yi_b + (3.*h_b)/4, n_box), np.linspace(yi_b, image_size[0], n_box)
 		
 		xi, yi, xf, yf = np.meshgrid(xi, yi, xf, yf)
 		xi, yi, xf, yf = xi.flatten(), yi.flatten(), xf.flatten(), yf.flatten()
@@ -366,7 +366,8 @@ def generate_proposal_boxes(boxes, n_box=20, min_size=.05 * .05):
 		)
 		
 		proposals = np.concatenate((proposals, proposal), axis=0)
-	
+
+	print proposals.shape[0]
 	return proposals
 
 # def generate_proposal_boxes(boxes, n_proposals=1000):
@@ -475,7 +476,7 @@ def generate_example(
 		return None
 	
 	neg_examples = proposals[neg_idx,:]
-	
+
 	X = np.zeros((n_neg + n_pos, 3) + input_shape, dtype=theano.config.floatX)
 	y = np.zeros((n_neg + n_pos, 4 + num_classes + 1), dtype=theano.config.floatX)
 	
@@ -555,11 +556,11 @@ def generate_data(
 	n_total = n_neg + n_pos
 	cnt = 0
 	X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-		y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+	y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
 		boxes = format_boxes(annotations[i]['annotations'])
-		proposals = generate_proposal_boxes(boxes, n_box=n_box)
+		proposals = generate_proposal_boxes(boxes, annotations[i]['size'], n_box=n_box)
 		indices = find_valid_boxes(boxes, proposals)
 		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
 		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[i]['annotations'], proposals, indices, n_neg, n_pos)
@@ -574,5 +575,5 @@ def generate_data(
 				npr.shuffle(idx)
 				yield X[idx], y[idx]
 			X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-					y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+			y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 			cnt = 0
