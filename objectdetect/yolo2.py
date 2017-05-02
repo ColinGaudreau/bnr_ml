@@ -9,6 +9,8 @@ from bnr_ml.utils.nonlinearities import softmax, smooth_l1, smooth_abs, safe_sqr
 from bnr_ml.utils.theano_extensions import argmin_unique
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
+from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
+
 
 from collections import OrderedDict
 from tqdm import tqdm
@@ -20,8 +22,6 @@ from lasagne.updates import rmsprop, sgd, adam
 from lasagne.updates import momentum as momentum_update
 
 from itertools import tee
-
-from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 import cv2
 

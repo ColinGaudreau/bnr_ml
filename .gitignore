@@ -25,3 +25,7 @@ data/*
 
 # ignore json files
 *.json
+
+# ignore virtual env
+venv/**
+venv/*

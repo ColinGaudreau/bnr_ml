@@ -5,7 +5,7 @@ import numpy as np
 import numpy.random as npr
 
 import lasagne
-from lasagne.layers import get_output, get_all_params
+from lasagne.layers import get_output, get_all_params, Layer
 from lasagne.objectives import categorical_crossentropy
 from lasagne.updates import rmsprop, sgd
 
@@ -19,6 +19,9 @@ from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.utils.helpers import meshgrid2D, format_image, StreamPrinter
 from bnr_ml.objectdetect.detector import BaseDetector
 from bnr_ml.objectdetect.nms import nms
+from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
+
+from bnr_ml.objectdetect.fastrcnn.roi_layer import ROILayer
 
 from copy import deepcopy
 from itertools import tee
@@ -27,8 +30,6 @@ import pdb
 from tqdm import tqdm
 
 import dlib
-
-from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 class FastRCNNSettings(BaseLearningSettings):
 	def __init__(
@@ -77,10 +78,16 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		network,
 		num_classes,
 	):
+		assert('detect' in network)
+		assert('localize' in network)
+		assert('roi_layer' in network)
+		assert(isinstance(network['roi_layer'], ROILayer))
+
 		self.network = network
 		self.num_classes = num_classes
 		self.input = network['input'].input_var
 		self.input_shape = network['input'].shape[2:]
+		self.boxes = network['roi_layer'].boxes
 
 		def reshape_loc_layer(loc_layer, num_classes):
 			return loc_layer.reshape((-1, num_classes + 1, 4))
@@ -167,10 +174,10 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			updates = update_fn(cost, params, **update_args)
 
 			ti = time.time();
-			self._train_fn = theano.function([self.input, target], cost, updates=updates)
+			self._train_fn = theano.function([self.input, self.boxes, target], cost, updates=updates)
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
 			ti = time.time();
-			self._test_fn = theano.function([self.input, target], cost_test)
+			self._test_fn = theano.function([self.input, self.boxes, target], cost_test)
 			print_obj.println('Compiling test function took %.3f seconds' % (time.time() - ti,))
 
 		print_obj.println('Beginning training')
@@ -179,13 +186,13 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		test_loss_batch = []
 		
 		ti = time.time()
-		for Xbatch, ybatch in generate_data(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch)
+		for Xbatch, boxes_batch, ybatch in generate_data(train_annotations, **train_args):
+			err = self._train_fn(Xbatch, boxes_batch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
 		
-		for Xbatch, ybatch in generate_data(test_annotations, **train_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
+		for Xbatch, boxes_batch, ybatch in generate_data(test_annotations, **train_args):
+			test_loss_batch.append(self._test_fn(Xbatch, boxes_batch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
@@ -324,256 +331,4 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		return output
 
-def format_boxes(annotation):
-	boxes = np.zeros((annotation.__len__(),4))
-	for i in range(boxes.shape[0]):
-		boxes[i] = [annotation[i]['x'], annotation[i]['y'], annotation[i]['w'], annotation[i]['h']]
-	return boxes
 
-def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
-	'''
-	Generate proposal regions using boxes; boxes should be 
-	an Nx4 matrix, were boxes[i] = [x,y,w,h]
-	
-	N - number of proposals per box
-	'''
-	proposals = np.zeros((0,4))
-	
-	for i in range(boxes.shape[0]):
-		box = boxes[i]
-		xi_b, yi_b, w_b, h_b = box[0], box[1], box[2], box[3]
-		xf_b, yf_b = xi_b + w_b, yi_b + h_b
-		
-		xi, xf = np.linspace(0, xi_b + (3.*w_b)/4, n_box), np.linspace(xi_b, image_size[1], n_box)
-		yi, yf = np.linspace(0, yi_b + (3.*h_b)/4, n_box), np.linspace(yi_b, image_size[0], n_box)
-		
-		xi, yi, xf, yf = np.meshgrid(xi, yi, xf, yf)
-		xi, yi, xf, yf = xi.flatten(), yi.flatten(), xf.flatten(), yf.flatten()
-		
-		valid = np.bitwise_and(
-			np.bitwise_and(xf > xi, yf > yi),
-			(xf-xi) * (yf-yi) > min_size
-		)
-		
-		proposal = np.concatenate(
-			(
-				xi[valid].reshape((-1,1)),
-				yi[valid].reshape((-1,1)),
-				(xf-xi)[valid].reshape((-1,1)),
-				(yf-yi)[valid].reshape((-1,1))
-			),
-			axis=1
-		)
-		
-		proposals = np.concatenate((proposals, proposal), axis=0)
-
-	print proposals.shape[0]
-	return proposals
-
-# def generate_proposal_boxes(boxes, n_proposals=1000):
-# 	'''
-# 	Generate proposal regions using boxes; boxes should be 
-# 	an Nx4 matrix, were boxes[i] = [x,y,w,h]
-	
-# 	N - number of proposals per box
-# 	'''
-	
-# 	proposals = np.zeros((boxes.shape[0] * n_proposals, 4))
-# 	proposal = np.zeros((n_proposals, 4))
-# 	n_pos = int(0.25 * n_proposals)
-# 	n_neg = n_proposals - n_pos
-
-# 	# define factor for creating neg/pos examples boxes
-# 	pos_fact = 4.
-# 	neg_fact = 2.
-
-# 	for i in range(boxes.shape[0]):
-# 		# positive box examples
-# 		proposal[:n_pos,0] = (boxes[i,0] - boxes[i,2]/pos_fact) + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
-# 		proposal[:n_pos,1] = (boxes[i,1] - boxes[i,3]/pos_fact) + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
-# 		proposal[:n_pos,2] = (pos_fact-1)/pos_fact * boxes[i,2] + (2./pos_fact) * boxes[i,2] * npr.rand(n_pos)
-# 		proposal[:n_pos,3] = (pos_fact-1)/pos_fact * boxes[i,3] + (2./pos_fact) * boxes[i,3] * npr.rand(n_pos)
-# 		# negative examples
-# 		proposal[n_pos:,0] = (boxes[i,0] - boxes[i,2]/neg_fact) + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
-# 		proposal[n_pos:,1] = (boxes[i,1] - boxes[i,3]/neg_fact) + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
-# 		proposal[n_pos:,2] = (neg_fact-1)/neg_fact * boxes[i,2] + (2./neg_fact) * boxes[i,2] * npr.rand(n_neg)
-# 		proposal[n_pos:,3] = (neg_fact-1)/neg_fact * boxes[i,3] + (2./neg_fact) * boxes[i,3] * npr.rand(n_neg)
-		
-# 		proposals[i*n_proposals:(i+1)*n_proposals] = proposal
-	
-# 	return proposals
-
-def find_valid_boxes(boxes, proposals):
-	'''
-	from the proposals, find the valid negative/positive examples
-	'''
-	boxes = boxes.reshape((1,) + boxes.shape)
-	proposals = proposals.reshape(proposals.shape + (1,))
-	
-	# calculate iou
-	xi = np.maximum(boxes[:,:,0], proposals[:,0])
-	yi = np.maximum(boxes[:,:,1], proposals[:,1])
-	xf = np.minimum(boxes[:,:,[0,2]].sum(axis=2), proposals[:,[0,2]].sum(axis=1))
-	yf = np.minimum(boxes[:,:,[1,3]].sum(axis=2), proposals[:,[1,3]].sum(axis=1))
-	
-	w, h = np.maximum(xf - xi, 0.), np.maximum(yf - yi, 0.)
-	
-	isec = w * h
-	union = boxes[:,:,2:].prod(axis=2) + proposals[:,2:].prod(axis=1) - isec
-	
-	iou = isec / union
-	
-	overlap = isec / boxes[:,:,2:].prod(axis=2)
-	
-	neg_idx = np.bitwise_and(
-		np.bitwise_and(
-			iou > 0.1, 
-			iou < 0.5
-		),
-		overlap < 1.
-	)
-	
-	pos_idx = iou > 0.5
-	
-	# get any box which doesn't overlap with any box
-	neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) >= 1, np.sum(iou < .5, axis=1) == iou.shape[1])
-	# neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) > 0, np.sum(overlap < .4, axis=1) == iou.shape[1])
-	#neg_idx = np.sum(neg_idx, axis=1) >= 1
-	
-	# filter out boxes that have an iou > .5 with more than one object
-	pos_idx = np.sum(pos_idx, axis=1) == 1
-	
-	indices = np.arange(proposals.shape[0])
-	
-	# get object index for matched object
-	obj_idx = iou[pos_idx,:].argmax(axis=1)
-	
-	return indices[neg_idx], indices[pos_idx], obj_idx
-
-def colour_space_augmentation(im):
-	im = color.rgb2hsv(im)
-	im[:,:,2] *= (0.2 * npr.rand() + 0.9)
-	idx = im[:,:,2] > 1.0
-	im[:,:,2][idx] = 1.0
-	im = color.hsv2rgb(im)
-	return im
-
-def generate_example(
-		im,
-		input_shape,
-		num_classes,
-		label_to_num,
-		annotation,
-		proposals,
-		indices,
-		n_neg,
-		n_pos
-	):
-	neg_idx, pos_idx, obj_idx = indices
-
-	if neg_idx.size == 0 or pos_idx.size == 0:
-		print('Warning, no valid prosals were given.')
-		return None
-	
-	neg_examples = proposals[neg_idx,:]
-
-	X = np.zeros((n_neg + n_pos, 3) + input_shape, dtype=theano.config.floatX)
-	y = np.zeros((n_neg + n_pos, 4 + num_classes + 1), dtype=theano.config.floatX)
-	
-	try:
-		pos_choice = npr.choice(np.arange(pos_idx.size), size=n_pos, replace=False)
-	except:
-		print('Warning, positive examples sampled with replacement from proposal boxes.')
-		pos_choice = npr.choice(np.arange(pos_idx.size), size=n_pos, replace=True)
-	try:
-		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=False)
-	except:
-		print('Warning, negative examples sampled with replacement from proposal boxes.')
-		neg_choice = npr.choice(np.arange(neg_idx.size), size=n_neg, replace=True)
-	
-	neg_idx, pos_idx, obj_idx = neg_idx[neg_choice], pos_idx[pos_choice], obj_idx[pos_choice]
-	
-	# generate negative examples
-	cls = np.zeros(num_classes + 1)
-	cls[-1] = 1.
-	coord = np.asarray([0.,0.,1.,1.])
-	for i in range(n_neg):
-		xi, yi = int(max(0,proposals[neg_idx[i],0])), int(max(0,proposals[neg_idx[i],1]))
-		xf = int(min(im.shape[1], proposals[neg_idx[i],[0,2]].sum()))
-		yf = int(min(im.shape[0], proposals[neg_idx[i],[1,3]].sum()))
-		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
-
-		if npr.rand() < 0.5:
-			subim = subim[::-1,:]
-		if npr.rand() < 0.5:
-			subim = subim[:,::-1]
-
-		y[i,:4] = coord
-		y[i,-(num_classes + 1):] = cls
-		X[i] = subim.swapaxes(2,1).swapaxes(1,0)
-	
-	cls[-1] = 0.
-	# generate positive examples
-	for i in range(n_pos):
-		xi, yi = int(max(0,proposals[pos_idx[i],0])), int(max(0,proposals[pos_idx[i],1]))
-		xf = int(min(im.shape[1], proposals[pos_idx[i],[0,2]].sum()))
-		yf = int(min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()))
-		subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
-
-		x_box = (annotation[obj_idx[i]]['x'] + annotation[obj_idx[i]]['w']/2 - proposals[pos_idx[i],0]) / proposals[pos_idx[i],2]
-		y_box = (annotation[obj_idx[i]]['y'] + annotation[obj_idx[i]]['h']/2 - proposals[pos_idx[i],1]) / proposals[pos_idx[i],3]
-		log_w, log_h = np.log(float(annotation[obj_idx[i]]['w']) / proposals[pos_idx[i], 2]), np.log(float(annotation[obj_idx[i]]['h']) / proposals[pos_idx[i], 3])
-
-		# flip vertically randomly
-		if npr.rand() < 0.5:
-			subim = subim[::-1,:]
-			y_box = 1. - y_box
-		# flip horizontally
-		if npr.rand() < 0.5:
-			subim = subim[:,::-1]
-			x_box = 1. - x_box
-
-		coord[:4] = [x_box, y_box, log_w, log_h]
-		cls[label_to_num[annotation[obj_idx[i]]['label']]] = 1.
-		X[i+n_neg] = subim.swapaxes(2,1).swapaxes(1,0)
-		y[i+n_neg,:4], y[i+n_neg,-(num_classes+1):] = coord, cls
-	
-	return X, y
-
-def generate_data(
-		annotations,
-		input_shape=None,
-		num_classes=None,
-		label_to_num=None,
-		n_neg=9,
-		n_pos=3,
-		batch_size=2,
-		n_box=20
-	):
-	if not isinstance(annotations, np.ndarray):
-		annotations = np.asarray(annotations)
-	npr.shuffle(annotations)
-	n_total = n_neg + n_pos
-	cnt = 0
-	X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-	y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
-
-	for i in range(annotations.size):
-		boxes = format_boxes(annotations[i]['annotations'])
-		proposals = generate_proposal_boxes(boxes, annotations[i]['size'], n_box=n_box)
-		indices = find_valid_boxes(boxes, proposals)
-		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
-		data = generate_example(im, input_shape, num_classes, label_to_num, annotations[i]['annotations'], proposals, indices, n_neg, n_pos)
-		if data is not None:
-			X[cnt*n_total:(cnt+1)*n_total], y[cnt*n_total:(cnt+1)*n_total] = data[0], data[1]
-			cnt += 1
-
-		if cnt == batch_size or (i-1) == annotations.size:
-			X, y = X[:cnt*n_total], y[:cnt*n_total]
-			if X.shape[0] > 0:
-				idx = np.arange(X.shape[0])
-				npr.shuffle(idx)
-				yield X[idx], y[idx]
-			X = np.zeros((n_total * batch_size, 3) + input_shape, dtype=theano.config.floatX)
-			y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
-			cnt = 0
