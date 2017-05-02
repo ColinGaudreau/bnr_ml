@@ -6,7 +6,6 @@ from sqlalchemy.types import JSON, PickleType, DateTime, Float
 import cPickle as pickle
 import datetime
 import sys
-from settings import SETTINGS
 import os
 import paramiko
 

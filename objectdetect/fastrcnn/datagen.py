@@ -7,7 +7,11 @@ from skimage.io import imread
 from skimage.transform import resize
 from skimage import color
 
+from bnr_ml.utils.helpers import format_image
+
 import cv2
+
+import pdb
 
 def format_boxes(annotation):
     boxes = np.zeros((annotation.__len__(),4))
@@ -52,7 +56,6 @@ def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
         
         proposals = np.concatenate((proposals, proposal), axis=0)
 
-    print proposals.shape[0]
     return proposals
 
 def find_valid_boxes(boxes, proposals):
@@ -151,9 +154,9 @@ def generate_example(
     cls[-1] = 1.
     coord = np.asarray([0.,0.,1.,1.])
     for i in range(n_neg):
-        xi, yi = int(max(0,proposals[neg_idx[i],0])), int(max(0,proposals[neg_idx[i],1]))
-        xf = int(min(im.shape[1], proposals[neg_idx[i],[0,2]].sum()))
-        yf = int(min(im.shape[0], proposals[neg_idx[i],[1,3]].sum()))
+        xi, yi = max(0,proposals[neg_idx[i],0]) / im.shape[1], max(0,proposals[neg_idx[i],1]) / im.shape[0]
+        xf = min(im.shape[1], proposals[neg_idx[i],[0,2]].sum()) / im.shape[1]
+        yf = min(im.shape[0], proposals[neg_idx[i],[1,3]].sum()) / im.shape[0]
         boxes[0,i,:] = [xi,yi,xf,yf]
 
         # subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
@@ -171,10 +174,10 @@ def generate_example(
     cls[-1] = 0.
     # generate positive examples
     for i in range(n_pos):
-        xi, yi = int(max(0,proposals[pos_idx[i],0])), int(max(0,proposals[pos_idx[i],1]))
-        xf = int(min(im.shape[1], proposals[pos_idx[i],[0,2]].sum()))
-        yf = int(min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()))
-        boxes[i+n_neg] = [xi,yi,xf,yf]
+        xi, yi = max(0,proposals[pos_idx[i],0]) / im.shape[1], max(0,proposals[pos_idx[i],1]) / im.shape[0]
+        xf = min(im.shape[1], proposals[pos_idx[i],[0,2]].sum()) / im.shape[1]
+        yf = min(im.shape[0], proposals[pos_idx[i],[1,3]].sum()) / im.shape[0]
+        boxes[0,i+n_neg] = [xi,yi,xf,yf]
 
         # subim = colour_space_augmentation(resize(im[yi:yf,xi:xf], input_shape))
 
@@ -219,9 +222,9 @@ def generate_data(
     y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
 
     for i in range(annotations.size):
-        boxes = format_boxes(annotations[i]['annotations'])
-        proposals = generate_proposal_boxes(boxes, annotations[i]['size'], n_box=n_box)
-        indices = find_valid_boxes(boxes, proposals)
+        proposal_boxes = format_boxes(annotations[i]['annotations'])
+        proposals = generate_proposal_boxes(proposal_boxes, annotations[i]['size'], n_box=n_box)
+        indices = find_valid_boxes(proposal_boxes, proposals)
         im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
         data = generate_example(im, input_shape, num_classes, label_to_num, annotations[i]['annotations'], proposals, indices, n_neg, n_pos)
         im = resize(im, input_shape)
@@ -234,14 +237,7 @@ def generate_data(
         if cnt == batch_size or (i-1) == annotations.size:
             X, boxes, y = X[:cnt], boxes[:cnt], y[:cnt*n_total]
             if X.shape[0] > 0:
-                # shuffle the images and boxes
-                idx_im, idx_box = np.arange(boxes.shape[0]), np.arange(boxes.shape[1])
-                npr.shuffle(idx_im), npr.shuffle(idx_box)
-                # shuffle the labels
-                idx_im_grid, idx_box_grid = np.meshgrid(idx_im, idx_box)
-                idx_label = idx_im_grid * batch_size + idx_box_grid
-                # return images, boxes, and labels
-                yield X[idx_im], boxes[idx_im, idx_boxes,] y[idx_label]
+		yield X, boxes, y
             X = np.zeros((batch_size, 3) + input_shape, dtype=theano.config.floatX)
             boxes = np.zeros((batch_size, n_total, 4), dtype=theano.config.floatX)
             y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)

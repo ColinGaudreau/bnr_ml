@@ -301,7 +301,7 @@ class PyCUDAROIPoolGrad(theano.Op):
     
 def roi_pool(x, boxes, shape):
     return PyCUDAROIPool(shape)(x, boxes)
-
+import pdb
 class ROILayer(Layer):
     '''
     Lasagne layer for the ROI pooling layer
@@ -323,7 +323,8 @@ class ROILayer(Layer):
         return roi_pool(input, self.boxes, self.shape)
 
     def get_output_shape_for(self, input_shape):
-        return (input_shape[0] * self.boxes.shape[1], self.shape[0], self.shape[1])
+	n_rois = input_shape[0] if input_shape[0] is None else inpuse_shape[0] * self.boxes.shape[1]
+        return (n_rois, input_shape[1], self.shape[0], self.shape[1])
 
 
 
