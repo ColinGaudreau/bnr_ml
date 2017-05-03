@@ -145,7 +145,8 @@ roi_mod = SourceModule("""
 							}
 						}
 					}
-					a4.dim1 = n; a4.dim2 = channel; a3.dim3 = i; a4.dim4 = j;
+
+					a4.dim1 = n * boxes->shp.dim2 + m; a4.dim2 = channel; a3.dim3 = i; a4.dim4 = j;
 					x_pool_grad->data[max_ind] += grad->data[asg_to_ind4(a4, grad->shp)];
 				}
 			}
