@@ -123,15 +123,10 @@ roi_mod = SourceModule("""
 				for(j=0; j<grad->shp.dim4; j++)
 				{
 					// define column/rows to loop over
-					//r_min = floorf(i * (yf - yi) / grad->shp.dim3);
-					//c_min = floorf(j * (xf - xi) / grad->shp.dim4);
-					//r_max = min(ceilf((i + 1) * (yf - yi) / grad->shp.dim3), yf);
-					//c_max = min(ceilf((j + 1) * (xf - xi) / grad->shp.dim4), xf);
-
-					r_min = yi + floorf(i / grad->shp.dim3);
-					c_min = xi + floorf(j / grad->shp.dim4);
-					r_max = yi + min(floorf((i + 1) / grad->shp.dim3), yf);
-					c_max = xi + min(floorf((j + 1) / grad->shp.dim4), xf);
+					r_min = yi + floorf((yf - yi) * float(i) / grad->shp.dim3);
+					c_min = xi + floorf((xf - xi) * float(j) / grad->shp.dim4);
+					r_max = yi + min(ceilf((yf - yi) * float(i + 1) / grad->shp.dim3), yf - yi);
+					c_max = xi + min(ceilf((xf - xi) * float(j + 1) / grad->shp.dim4), xf - xi);
 					
 					// find maximum element
 					a4.dim1 = n; a4.dim2 = channel; a4.dim3 = r_min; a4.dim4 = c_min;
