@@ -237,7 +237,7 @@ def generate_data(
         if cnt == batch_size or (i-1) == annotations.size:
             X, boxes, y = X[:cnt], boxes[:cnt], y[:cnt*n_total]
             if X.shape[0] > 0:
-		yield X, boxes, y
+                yield X, boxes, y
             X = np.zeros((batch_size, 3) + input_shape, dtype=theano.config.floatX)
             boxes = np.zeros((batch_size, n_total, 4), dtype=theano.config.floatX)
             y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
