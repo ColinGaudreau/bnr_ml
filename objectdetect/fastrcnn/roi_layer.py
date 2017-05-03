@@ -77,10 +77,10 @@ roi_mod = SourceModule("""
 		a3.dim3 = 3; yf = ceilf(x->shp.dim3 * boxes->data[asg_to_ind3(a3, boxes->shp)]);
 		
 		// define column/rows to loop over
-		r_min = floorf(r_ind * (yf - yi) / x_pool->shp.dim3);
-		c_min = floorf(c_ind * (xf - xi) / x_pool->shp.dim4);
-		r_max = min(ceilf((r_ind + 1) * (yf - yi) / x_pool->shp.dim3), yf);
-		c_max = min(ceilf((c_ind + 1) * (xf - xi) / x_pool->shp.dim4), xf);
+		r_min = yi + floorf(r_ind / x_pool->shp.dim3);
+		c_min = xi + floorf(c_ind / x_pool->shp.dim4);
+		r_max = yi + min(floorf((r_ind + 1) / x_pool->shp.dim3), yf);
+		c_max = xi + min(floorf((c_ind + 1) / x_pool->shp.dim4), xf);
 		
 		a4.dim1 = n; a4.dim2 = channel; a4.dim3 = r_min; a4.dim4 = c_min;
 		max_val = x->data[asg_to_ind4(a4, x->shp)];
@@ -127,6 +127,11 @@ roi_mod = SourceModule("""
 					c_min = floorf(j * (xf - xi) / grad->shp.dim4);
 					r_max = min(ceilf((i + 1) * (yf - yi) / grad->shp.dim3), yf);
 					c_max = min(ceilf((j + 1) * (xf - xi) / grad->shp.dim4), xf);
+
+					r_min = yi + floorf(r_ind / grad->shp.dim3);
+					c_min = xi + floorf(c_ind / grad->shp.dim4);
+					r_max = yi + min(floorf((r_ind + 1) / grad->shp.dim3), yf);
+					c_max = xi + min(floorf((c_ind + 1) / grad->shp.dim4), xf);
 					
 					// find maximum element
 					a4.dim1 = n; a4.dim2 = channel; a4.dim3 = r_min; a4.dim4 = c_min;
