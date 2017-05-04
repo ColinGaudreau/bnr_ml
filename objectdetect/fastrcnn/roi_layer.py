@@ -66,8 +66,8 @@ roi_mod = SourceModule("""
 		int r_min, c_min, r_max, c_max;
 		
 		// get indices
-		r_ind = blockIdx.x; c_ind = blockIdx.y; channel = blockIdx.z;
-		n = floorf(((float)threadIdx.x) / boxes->shp.dim2); m = threadIdx.x % boxes->shp.dim2;
+		r_ind = blockIdx.x; c_ind = blockIdx.y; channel = threadIdx.x;
+		n = floorf(((float)blockIdx.z) / boxes->shp.dim2); m = blockIdx.z % boxes->shp.dim2;
 		
 		// get index for box
 		a3.dim1 = n; a3.dim2 = m;
@@ -258,8 +258,8 @@ class PyCUDAROIPool(theano.Op):
 			x_ptr, _ = get_tens_ptr(x[0])
 			boxes_ptr, _ = get_tens_ptr(boxes[0])
 			z_ptr, z_tens = get_tens_ptr(z[0])
-			grid = (self.shape[0], self.shape[1], x[0].shape[1])
-			block = (z_shape[0], 1, 1)
+			grid = (self.shape[0], self.shape[1], z_shape[0])
+			block = (x[0].shape[1], 1, 1)
 			pycuda_func(z_ptr, x_ptr, boxes_ptr, block=block, grid=grid)
 		
 		return thunk
