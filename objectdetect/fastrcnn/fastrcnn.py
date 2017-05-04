@@ -259,10 +259,16 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			self._trained = False
 
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		boxes = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
+		boxes = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h)
 		boxes = np.asarray([b.tolist() for b in boxes], dtype=theano.config.floatX)
+		boxes[:,[0,2]] /= self.input_shape[1]; boxes[:,[1,3]] /= self.input_shape[0]
+		boxes = boxes.reshape((1,) + boxes.shape)
+		
+		im = resize(im, self.input_shape)
+                im = swap(im).reshape((1,3) + im.shape[:2]).astype(theano.config.floatX)
 
-		class_score, coord = self._detect_fn(swap(im).reshape((1,3) + im.shape[:2], boxes)
+		pdb.set_trace()
+		class_score, coord = self._detect_fn(im, boxes)
 
 		# if max_regions is not None:
 		# 	max_regions = min(regions.__len__(), max_regions)
