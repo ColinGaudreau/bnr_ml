@@ -248,43 +248,48 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		# compile detection function if it has not yet been done
 		detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
 		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_input = theano.shared(detect_input_ndarray, name='detection_input', borrow=True)
-			self.network['input'].input_var = self._detect_input
-			detection = get_output(self.network['detect'], deterministic=True)
-			localization = self._reshape_localization_layer(get_output(self.network['localize'], deterministic=True))
-			self.network['input'].input_var = self.input
+			# self._detect_input = theano.shared(detect_input_ndarray, name='detection_input', borrow=True)
+			# self.network['input'].input_var = self._detect_input
+			# detection = get_output(self.network['detect'], deterministic=True)
+			# localization = self._reshape_localization_layer(get_output(self.network['localize'], deterministic=True))
+			# self.network['input'].input_var = self.input
 
 			# need to add stuff to connect all of this
-			self._detect_fn = theano.function([], [detection, localization])
+			self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
 			self._trained = False
 
-		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
-		if max_regions is not None:
-			max_regions = min(regions.__len__(), max_regions)
-			regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
-		
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		# im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
+		boxes = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
+		boxes = np.asarray([b.tolist() for b in boxes], dtype=theano.config.floatX)
 
-		subim_ph = np.zeros(self.input_shape + (3,), dtype=theano.config.floatX)
-		batch_index = 0
-		class_score = np.zeros((regions.__len__(), self.num_classes + 1), dtype=theano.config.floatX)
-		coord = np.zeros((regions.__len__(), self.num_classes + 1, 4), dtype=theano.config.floatX)
-		for i, box in enumerate(regions):
-			subim = box.subimage(im)
-			cv2.resize(subim, self.input_shape[::-1], dst=subim_ph, interpolation=cv2.INTER_NEAREST)
+		class_score, coord = self._detect_fn(swap(im).reshape((1,3) + im.shape[:2], boxes)
 
-			detect_input_ndarray[batch_index] = swap(subim_ph)
-			batch_index += 1
+		# if max_regions is not None:
+		# 	max_regions = min(regions.__len__(), max_regions)
+		# 	regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
+		
+		# swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
+		# # im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
 
-			if batch_index == batch_size:
-				self._detect_input.set_value(detect_input_ndarray, borrow=True)
-				class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
-				batch_index = 0
+		# subim_ph = np.zeros(self.input_shape + (3,), dtype=theano.config.floatX)
+		# batch_index = 0
+		# class_score = np.zeros((regions.__len__(), self.num_classes + 1), dtype=theano.config.floatX)
+		# coord = np.zeros((regions.__len__(), self.num_classes + 1, 4), dtype=theano.config.floatX)
+		# for i, box in enumerate(regions):
+		# 	subim = box.subimage(im)
+		# 	cv2.resize(subim, self.input_shape[::-1], dst=subim_ph, interpolation=cv2.INTER_NEAREST)
 
-		if batch_index != batch_size and batch_index != 0:
-			self._detect_input.set_value(detect_input_ndarray[:batch_index], borrow=True)
-			class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
+		# 	detect_input_ndarray[batch_index] = swap(subim_ph)
+		# 	batch_index += 1
+
+		# 	if batch_index == batch_size:
+		# 		self._detect_input.set_value(detect_input_ndarray, borrow=True)
+		# 		class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
+		# 		batch_index = 0
+
+		# if batch_index != batch_size and batch_index != 0:
+		# 	self._detect_input.set_value(detect_input_ndarray[:batch_index], borrow=True)
+		# 	class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
 
 		# compute scores for the regions
 		# if batch_size is not None:
