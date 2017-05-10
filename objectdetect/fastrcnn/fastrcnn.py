@@ -274,41 +274,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		class_score, coord = self._detect_fn(im, boxes)
 
-		# if max_regions is not None:
-		# 	max_regions = min(regions.__len__(), max_regions)
-		# 	regions = regions[npr.choice(regions.__len__(), max_regions, replace=False)]
-		
-		# swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		# # im_list = np.zeros((regions.__len__(), 3) + self.input_shape, dtype=theano.config.floatX)
-
-		# subim_ph = np.zeros(self.input_shape + (3,), dtype=theano.config.floatX)
-		# batch_index = 0
-		# class_score = np.zeros((regions.__len__(), self.num_classes + 1), dtype=theano.config.floatX)
-		# coord = np.zeros((regions.__len__(), self.num_classes + 1, 4), dtype=theano.config.floatX)
-		# for i, box in enumerate(regions):
-		# 	subim = box.subimage(im)
-		# 	cv2.resize(subim, self.input_shape[::-1], dst=subim_ph, interpolation=cv2.INTER_NEAREST)
-
-		# 	detect_input_ndarray[batch_index] = swap(subim_ph)
-		# 	batch_index += 1
-
-		# 	if batch_index == batch_size:
-		# 		self._detect_input.set_value(detect_input_ndarray, borrow=True)
-		# 		class_score[i - (batch_size - 1):i + 1], coord[i - (batch_size - 1):i + 1] = self._detect_fn()
-		# 		batch_index = 0
-
-		# if batch_index != batch_size and batch_index != 0:
-		# 	self._detect_input.set_value(detect_input_ndarray[:batch_index], borrow=True)
-		# 	class_score[i - batch_index:i], coord[i - batch_index:i] = self._detect_fn()
-
-		# compute scores for the regions
-		# if batch_size is not None:
-		# 	class_score, coord = np.zeros((regions.__len__(), self.num_classes + 1)), np.zeros((regions.__len__(), self.num_classes + 1, 4))
-		# 	for i in range(0, regions.__len__(), batch_size):
-		# 		class_score[i:i+batch_size], coord[i:i+batch_size] = self._detect_fn(im_list[i:i+batch_size])
-		# else:
-		# 	class_score, coord = self._detect_fn(im_list)
-
 		# filter out windows which are 1) not labeled to be an object 2) below threshold
 		class_id = np.argmax(class_score[:,:-1], axis=1)
 		class_score = class_score[np.arange(class_score.shape[0]), class_id]
@@ -322,30 +287,24 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		objects = []
 		scale_factor = (float(old_size[0])/im_size[0], float(old_size[1])/im_size[1])
 		for i, box in enumerate(regions):
-			coord[i, [0,2]] *= box.w
-			coord[i, [1,3]] *= box.h
-			coord[i, 0] += box.xi
-			coord[i, 1] += box.yi
-			coord[i, 2:] += coord[i, :2]
-			obj = BoundingBox(*coord[i,:].tolist())
-			obj *= scale_factor
-			objects.append(obj)
+			# check if object confidence above threshold
+			if is_obj[i]:
+				# adjust box coordinates relative to the proposal region and original image size
+				coord[i, [0,2]] *= box.w
+				coord[i, [1,3]] *= box.h
+				coord[i, 0] += box.xi
+				coord[i, 1] += box.yi
+				coord[i, 2:] += coord[i, :2]
+				cls = class_id[i]
+				if num_to_label is not None:
+					cls = num_to_label[cls]
+				obj = BoundingBox(*coord[i,:].tolist(), cls=cls, confidence=class_score[i])
+				obj *= scale_factor
+				objects.append(obj)
 
-		objects = np.asarray(objects)
-		class_score, class_id = class_score[is_obj], class_id[is_obj]
-
-		# convert to expected format for detector output
-		output = {}
-		for cls in np.unique(class_id):
-			cls_output = {}
-			cls_idx = class_id == cls
-			boxes, scores = nms(objects[cls_idx].tolist(), scores=class_score[cls_idx].tolist(), overlap=overlap)
-			cls_output['boxes'] = boxes
-			cls_output['scores'] = scores
-			if num_to_label is not None:
-				cls = num_to_label[cls]
-			output[cls] = cls_output
-
-		return output
+		# do nms
+		objects = nms(objects, overlap=overlap)
+		
+		return objects
 
 
