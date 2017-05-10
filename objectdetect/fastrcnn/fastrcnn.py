@@ -298,10 +298,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				cls = class_id[i]
 				if num_to_label is not None:
 					cls = num_to_label[cls]
+				pdb.set_trace()
 				obj = BoundingBox(*coord[i,:].tolist(), cls=cls, confidence=class_score[i])
 				obj *= scale_factor
 				objects.append(obj)
-
+		
+		pdb.set_trace()
 		# do nms
 		objects = nms(objects, overlap=overlap)
 		
