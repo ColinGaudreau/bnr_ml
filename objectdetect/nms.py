@@ -5,14 +5,20 @@ def nms(boxes, *args, **kwargs):
 	'''
 	Takes list of BoundingBox objects and does non maximal suppression.
 	'''
-	boxes = copy.deepcopy(boxes)
-	classes = list(set([box.cls for box in boxes]))
-	objs = []
 	# nms for each class
-	for cls in classes:
-		boxes_per_cls = [box for box in boxes if box.cls == cls]
-		objs.extend(_viola_jones(boxes, *args, **kwargs))
-	return objs
+	n_apply = 1
+	if n_apply in kwargs:
+		n_apply = n_apply
+
+	classes = list(set([box.cls for box in boxes]))
+	boxes = copy.deepcopy(boxes)
+	for _ in range(n_apply):
+		objs = []
+		for cls in classes:
+			boxes_per_cls = [box for box in boxes if box.cls == cls]
+			objs.extend(_viola_jones(boxes, *args, **kwargs))
+		boxes = objs
+	return boxes
 
 def _viola_jones(boxes, overlap=0.4):
 	'''
