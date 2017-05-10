@@ -278,7 +278,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		class_id = np.argmax(class_score[:,:-1], axis=1)
 		class_score = class_score[np.arange(class_score.shape[0]), class_id]
 		is_obj = class_score > thresh
-		coord = coord[np.arange(coord.shape[0]), class_id][is_obj]
+		coord = coord[np.arange(coord.shape[0]), class_id]
 		coord[:,2:] = np.exp(coord[:,2:])
 		coord[:,:2] -= coord[:,2:]/2
 
@@ -301,7 +301,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				obj *= scale_factor
 				objects.append(obj)
 		
-		pdb.set_trace()
 		# do nms
 		objects = nms(objects, overlap=overlap)
 		
