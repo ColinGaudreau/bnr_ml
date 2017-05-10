@@ -68,7 +68,7 @@ roi_mod = SourceModule("""
 		// get indices
 		r_ind = blockIdx.x; c_ind = blockIdx.y; channel = threadIdx.x;
 		n = floorf(((float)blockIdx.z) / boxes->shp.dim2); m = blockIdx.z % boxes->shp.dim2;
-		
+	
 		// get index for box
 		a3.dim1 = n; a3.dim2 = m;
 		a3.dim3 = 0; xi = floorf(x->shp.dim4 * boxes->data[asg_to_ind3(a3, boxes->shp)]);
@@ -94,7 +94,7 @@ roi_mod = SourceModule("""
 					max_val = x->data[ind];
 			}
 		}
-		a4.dim1 = threadIdx.x; a4.dim2 = channel; a4.dim3 = r_ind; a4.dim4 = c_ind;
+		a4.dim1 = blockIdx.z; a4.dim2 = channel; a4.dim3 = r_ind; a4.dim4 = c_ind;
 		x_pool->data[asg_to_ind4(a4, x_pool->shp)] = max_val;
 	}
 	
@@ -145,8 +145,8 @@ roi_mod = SourceModule("""
 							}
 						}
 					}
-
-					a4.dim1 = n * boxes->shp.dim2 + m; a4.dim2 = channel; a3.dim3 = i; a4.dim4 = j;
+					
+					a4.dim1 = n * boxes->shp.dim2 + m; a4.dim2 = channel; a4.dim3 = i; a4.dim4 = j;
 					x_pool_grad->data[max_ind] += grad->data[asg_to_ind4(a4, grad->shp)];
 				}
 			}
@@ -297,6 +297,8 @@ class PyCUDAROIPoolGrad(theano.Op):
 			z = outputs[0]
 			if z[0] is None or z[0].shape != x[0].shape:
 				z[0] = tcuda.CudaNdarray.zeros(x[0].shape)
+			else:
+				z[0][:] = 0
 			x_ptr, _ = get_tens_ptr(x[0])
 			boxes_ptr, _ = get_tens_ptr(boxes[0])
 			grad_ptr, _ = get_tens_ptr(grad[0])

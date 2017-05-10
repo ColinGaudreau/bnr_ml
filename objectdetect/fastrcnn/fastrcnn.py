@@ -82,7 +82,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		assert('detect' in network)
 		assert('localize' in network)
 		assert('roi_layer' in network)
-		assert(isinstance(network['roi_layer'], ROILayer))
+		# assert(isinstance(network['roi_layer'], ROILayer))
 
 		self.network = network
 		self.num_classes = num_classes
@@ -129,11 +129,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 		
 		cost = T.sum(-target[:,-(self.num_classes + 1):] * T.log(detection_output), axis=1).mean()
+		
 		# cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		if lmbda > 0:
-			cost += lmbda * mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)
+			cost += lmbda * T.sum(mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)) / mask.nonzero()[0].size
 		
-		return T.mean(cost)
+		return cost
 
 	def get_weights(self):
 		return [p.get_value() for p in self.get_params()]
@@ -244,6 +245,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		
 		old_size = im.shape[:2]
 		im = self._rescale_image(im, max_dim)
+		im_size = im.shape[:2]
 
 		# compile detection function if it has not yet been done
 		detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
@@ -257,17 +259,19 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			# need to add stuff to connect all of this
 			self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
 			self._trained = False
-
+		
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		boxes = self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h)
-		boxes = np.asarray([b.tolist() for b in boxes], dtype=theano.config.floatX)
-		boxes[:,[0,2]] /= self.input_shape[1]; boxes[:,[1,3]] /= self.input_shape[0]
+		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
+		if max_regions is not None:
+			max_regions = min(regions.shape[0], max_regions)
+			regions = regions[npr.choice(regions.shape[0], max_regions, replace=False)]
+		boxes = np.asarray([b.tolist() for b in regions], dtype=theano.config.floatX)
+		boxes[:,[0,2]] /= im_size[1]; boxes[:,[1,3]] /= im_size[0]
 		boxes = boxes.reshape((1,) + boxes.shape)
 		
 		im = resize(im, self.input_shape)
                 im = swap(im).reshape((1,3) + im.shape[:2]).astype(theano.config.floatX)
 
-		pdb.set_trace()
 		class_score, coord = self._detect_fn(im, boxes)
 
 		# if max_regions is not None:
@@ -316,7 +320,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		# re-adjust boxes for the image
 		objects = []
-		scale_factor = (float(old_size[0])/im.shape[0], float(old_size[1])/im.shape[1])
+		scale_factor = (float(old_size[0])/im_size[0], float(old_size[1])/im_size[1])
 		for i, box in enumerate(regions):
 			coord[i, [0,2]] *= box.w
 			coord[i, [1,3]] *= box.h
