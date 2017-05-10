@@ -188,7 +188,7 @@ class BoundingBox(object):
 			new_box.yf += vec[3]
 		return new_box
 
-def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,255)):
+def draw_boxes(im, boxes, color=(255,255,255)):
 	if not isinstance(im, Image.Image):
 		if im.max() <= 1:
 			im = im * 255
@@ -202,24 +202,26 @@ def draw_boxes(im, boxes, class_scores=None, class_labels=None, color=(255,255,2
 	draw = ImageDraw.Draw(im)
 
 	# decide color for labels
-	if class_labels is not None and isinstance(color, tuple):
-		color = {}
-		unique_labels = np.unique(class_labels).tolist()
+	colors = {}
+	unique_labels = np.unique([box.cls for box in boxes]).tolist()
+	if isinstance(color, tuple):
 		for label in unique_labels:
-			color[label] = tuple(np.int_(255 * npr.rand(3,)))
+			colors[label] = tuple(np.int_(255 * npr.rand(3,)))
+	elif isinstance(color, dict):
+		colors = color
 
-	for i, box in enumerate(boxes):
-		if class_labels is not None:
-			label_color = color[class_labels[i]]
+	for box in boxes:
+		if box.cls is not None:
+			label_color = color[box.cls]
 			text = class_labels[i]
 		else:
 			label_color = color
 			text = ''
 
-		if class_scores is not None:
-			if class_labels is not None:
+		if box.confidence > 0:
+			if box.cls is not None:
 				text += ', '
-			text += ('Confidence: %.2f' % class_scores[i])
+			text += ('Confidence: %.2f' % box.confidence)
 
 		draw.rectangle(box.tolist(), outline=label_color)
 		draw.text(box.tolist()[:2], text, fill=label_color)
