@@ -232,6 +232,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			batch_size=50,
 			max_regions=1000,
 			overlap=.4,
+			n_apply=1,
 			num_to_label=None,
 		):
 		if im.shape.__len__() == 2:
@@ -302,7 +303,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				objects.append(obj)
 		
 		# do nms
-		objects = nms(objects, overlap=overlap)
+		objects = nms(objects, overlap=overlap, n_apply=n_apply)
 		
 		return objects
 
