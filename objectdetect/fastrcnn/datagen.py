@@ -58,6 +58,15 @@ def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
     N - number of proposals per box
     '''
     proposals = np.zeros((0,4))
+
+    def calc_n_box(n_objs, n_objs_max, n_box_max, n_box_min):
+        a = (n_box_max - n_box_min) / (n_objs_max - 1)
+        b = n_box_min - a
+        n_box = a * n_objs + b
+        n_box = max(0, min(n_box_max, n_box))
+        return round(n_box)
+        
+    n_box = calc_n_box(boxes.shape[0], 50, 5, 40)
     
     for i in range(boxes.shape[0]):
         box = boxes[i]
