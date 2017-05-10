@@ -14,14 +14,15 @@ import cv2
 
 import pdb
 
-def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose=True):
+def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, n_pos=400, verbose=True):
 	examples = []
 	for i in range(annotations.__len__()):
 		imsize = annotations[i]['size']
 		annotation = annotations[i]['annotations']
 		boxes = format_boxes(annotation)
-		proposals = generate_proposal_boxes(boxes, n_box=40)
+		proposals = generate_proposal_boxes(boxes, imsize, n_box=n_box)
 		neg_idx, pos_idx, obj_idx = find_valid_boxes(boxes, proposals)
+		print('Generated {} negative regions, and {} positive regions. {} objects in image.'.format(neg_idx.size, pos_idx.size, annotation.__len__()))
 		if neg_idx.size < n_neg:
 			neg_idx = np.concatenate((neg_idx, npr.choice(neg_idx, size=n_neg - neg_idx.size, replace=True)))
 		if pos_idx.size < n_pos:
@@ -31,7 +32,7 @@ def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose
 
 		neg_idx = npr.choice(neg_idx, size=n_neg, replace=False)
 		idx = np.arange(pos_idx.size); idx = npr.choice(idx, size=n_pos, replace=False)
-		pos_idx, obj_idx = pos_idx[idx], neg_idx[idx]
+		pos_idx, obj_idx = pos_idx[idx], obj_idx[idx]
 
 		example = {}
 		example['negative'] = proposals[neg_idx]
@@ -41,7 +42,7 @@ def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose
 		example['positive'] = pos_example
 		examples.append(example)
 		if verbose:
-			print('Proposals generated for {} of {} images.'.format(i+1, annotations.__len__()))
+			print('Proposals generated for {} of {} images.\n'.format(i+1, annotations.__len__()))
 	return examples
 
 def generate_example_2(annotation, imsize, n_classes, neg_proposals, pos_proposals, obj_idx, n_neg, n_pos, label_to_num):
@@ -138,7 +139,14 @@ def format_boxes(annotation):
 		boxes[i] = [annotation[i]['x'], annotation[i]['y'], annotation[i]['w'], annotation[i]['h']]
 	return boxes
 
-def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
+def calc_n_box(n_obj, n_obj_min, n_obj_max, n_box_min, n_box_max):
+	a = (n_box_min - n_box_max) / (n_obj_max - n_obj_min)
+	b = n_box_max - a * n_obj_min
+	n_box = a * n_obj + b
+	n_box = max(n_box_min, min(n_box_max, n_box))
+	return n_box
+
+def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=0.05 * 0.05):
 	'''
 	Generate proposal regions using boxes; boxes should be 
 	an Nx4 matrix, were boxes[i] = [x,y,w,h]
@@ -147,15 +155,7 @@ def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=.05 * .05):
 	'''
 	proposals = np.zeros((0,4))
 
-	def calc_n_box(n_objs, n_objs_max, n_box_max, n_box_min):
-		a = (n_box_max - n_box_min) / (n_objs_max - 1)
-		b = n_box_min - a
-		n_box = a * n_objs + b
-		n_box = max(0, min(n_box_max, n_box))
-		return round(n_box)
-		
-	n_box = calc_n_box(boxes.shape[0], 50, 5, 40)
-	
+	n_box = calc_n_box(boxes.shape[0], 1, 30, 10, 30)
 	for i in range(boxes.shape[0]):
 		box = boxes[i]
 		xi_b, yi_b, w_b, h_b = box[0], box[1], box[2], box[3]

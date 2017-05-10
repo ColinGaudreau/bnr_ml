@@ -7,23 +7,27 @@ def nms(boxes, *args, **kwargs):
 	'''
 	# nms for each class
 	n_apply = 1
-	if n_apply in kwargs:
-		n_apply = n_apply
-
+	if 'n_apply' in kwargs:
+		n_apply = kwargs['n_apply']
+	print n_apply
 	classes = list(set([box.cls for box in boxes]))
 	boxes = copy.deepcopy(boxes)
 	for _ in range(n_apply):
 		objs = []
 		for cls in classes:
 			boxes_per_cls = [box for box in boxes if box.cls == cls]
-			objs.extend(_viola_jones(boxes, *args, **kwargs))
+			objs.extend(_viola_jones(boxes_per_cls, *args, **kwargs))
 		boxes = objs
 	return boxes
 
-def _viola_jones(boxes, overlap=0.4):
+def _viola_jones(boxes, *args, **kwargs):
 	'''
 	Calculate score for the combined boxes
 	'''
+	overlap = 0.4
+	if 'overlap' in kwargs:
+		overlap = kwargs['overlap']
+
 	if boxes.__len__() == 0:
 		return []
 	scores = [box.confidence for box in boxes]

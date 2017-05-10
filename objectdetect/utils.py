@@ -213,7 +213,7 @@ def draw_boxes(im, boxes, color=(255,255,255)):
 	for box in boxes:
 		if box.cls is not None:
 			label_color = colors[box.cls]
-			text = class_labels[i]
+			text = box.cls
 		else:
 			label_color = color
 			text = ''
