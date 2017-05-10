@@ -6,11 +6,11 @@ def nms(boxes, *args, **kwargs):
 	Takes list of BoundingBox objects and does non maximal suppression.
 	'''
 	boxes = copy.deepcopy(boxes)
-	classes = np.unique([box.cls for box in boxes])
+	classes = list(set([box.cls for box in boxes]))
 	objs = []
 	# nms for each class
 	for cls in classes:
-		boxes_per_cls = np.asarray([box for box in boxes if box.cls == cls])
+		boxes_per_cls = [box for box in boxes if box.cls == cls]
 		objs.extend(_viola_jones(boxes, *args, **kwargs))
 	return objs
 
@@ -20,7 +20,6 @@ def _viola_jones(boxes, overlap=0.4):
 	'''
 	if boxes.__len__() == 0:
 		return []
-	assert(boxes.__len__() == scores.__len__())
 	scores = [box.confidence for box in boxes]
 	regions = []
 	region_scores = []
@@ -49,14 +48,13 @@ def _viola_jones(boxes, overlap=0.4):
 	new_scores = []
 	for region, score in zip(regions, region_scores):
 		box_init = region[0] / len(region)
-
+		box_init.confidence = score[0] / len(score)
 		# average the coordinate and class confidence scores for boxes in the same region
 		for box, s in zip(region[1:], score[1:]):
 			box_init += (box / len(region))
 			box_init.confidence += (s / len(score))
 
 		# set the class name
-		box_init.cls = boxes[0].cls
 		objs.append(box_init)
 
 	return objs
