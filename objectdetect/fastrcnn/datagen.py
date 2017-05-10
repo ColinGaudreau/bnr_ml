@@ -198,8 +198,9 @@ def generate_example(
         cls[label_to_num[annotation[obj_idx[i]]['label']]] = 1.
         # X[i+n_neg] = subim.swapaxes(2,1).swapaxes(1,0)
         y[i+n_neg,:4], y[i+n_neg,-(num_classes+1):] = coord, cls
-    
-    return boxes, y
+ 
+    idx = np.arange(y.shape[0]); npr.shuffle(idx)   
+    return boxes[:,idx], y[idx]
 
 def generate_data(
         annotations,
