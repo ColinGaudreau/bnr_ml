@@ -9,9 +9,40 @@ from skimage import color
 
 from bnr_ml.utils.helpers import format_image
 
+import pickle
 import cv2
 
 import pdb
+
+def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose=True):
+    examples = []
+    for i in range(annotations.__len__()):
+        imsize = annotations[i]['size']
+        annotation = annotations[i]['annotations']
+        boxes = format_boxes(annotation)
+        proposals = generate_proposal_boxes(boxes, n_box=40)
+        neg_idx, pos_idx, obj_idx = find_valid_boxes(boxes, proposals)
+        if neg_idx.size < n_neg:
+            neg_idx = np.concatenate((neg_idx, npr.choice(neg_idx, size=n_neg - neg_idx.size, replace=True)))
+        if pos_idx.size < n_pos:
+            idx = np.arange(pos_idx.size)
+            idx = np.concatenate((idx, npr.choice(idx, size=n_pos - idx.size, replace=True)))
+            pos_idx, obj_idx = pos_idx[idx], obj_idx[idx]
+
+        neg_idx = npr.choice(neg_idx, size=n_neg, replace=False)
+        idx = np.arange(pos_idx.size); idx = npr.choice(idx, size=n_pos, replace=False)
+        pos_idx, obj_idx = pos_idx[idx], neg_idx[idx]
+
+        example = {}
+        example['negative'] = proposals[neg_idx]
+        pos_example = {}
+        pos_example['proposals'] = proposals[neg_idx]
+        pos_example['object'] = obj_idx
+        example['positive'] = pos_example
+        examples.append(example)
+        if verbose:
+            print('Proposals generated for {} of {} images.'.format(i+1, annotations.__len__()))
+    return examples
 
 def format_boxes(annotation):
     boxes = np.zeros((annotation.__len__(),4))
