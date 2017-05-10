@@ -22,7 +22,7 @@ from bnr_ml.objectdetect.nms import nms
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 from bnr_ml.objectdetect.fastrcnn.roi_layer import ROILayer
-from bnr_ml.objectdetect.fastrcnn.datagen import generate_data
+import bnr_ml.objectdetect.fastrcnn.datagen as datagen
 
 from copy import deepcopy
 from itertools import tee
@@ -38,7 +38,8 @@ class FastRCNNSettings(BaseLearningSettings):
 			train_annotations,
 			test_annotations,
 			train_args,
-			print_obj=None,
+			data_generator=datagen.generate_data,
+			print_obj=StreamPrinter(open('/dev/stdout','w')),
 			update_fn=rmsprop,
 			update_args={'learning_rate': 1e-5},
 			lmbda=1.,
@@ -48,10 +49,8 @@ class FastRCNNSettings(BaseLearningSettings):
 		self.train_annotations = train_annotations
 		self.test_annotations = test_annotations
 		self.train_args = train_args
-		if print_obj is None:
-			self.print_obj = StreamPrinter(open('/dev/stdout', 'w'))
-		else:
-			self.print_obj = print_obj
+		self.data_generator = data_generator
+		self.print_obj = print_obj
 		self.update_fn = update_fn
 		self.update_args = update_args
 		self.lmbda = lmbda
@@ -71,6 +70,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		network should have an:
 			input: this is the input layer
 			detect: FC Layer for detections
+			roi_layer: ROI layer
 			localize: FC Layer for localization
 
 	'''
@@ -156,6 +156,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		train_annotations = self.settings.train_annotations
 		test_annotations = self.settings.test_annotations
 		train_args = self.settings.train_args
+		data_generator = self.settings.data_generator
 		print_obj = self.settings.print_obj
 		update_fn = self.settings.update_fn
 		update_args = self.settings.update_args
@@ -189,12 +190,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		test_loss_batch = []
 		
 		ti = time.time()
-		for Xbatch, boxes_batch, ybatch in generate_data(train_annotations, **train_args):
+		for Xbatch, boxes_batch, ybatch in data_generator(train_annotations, **train_args):
 			err = self._train_fn(Xbatch, boxes_batch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
 		
-		for Xbatch, boxes_batch, ybatch in generate_data(test_annotations, **train_args):
+		for Xbatch, boxes_batch, ybatch in data_generator(test_annotations, **train_args):
 			test_loss_batch.append(self._test_fn(Xbatch, boxes_batch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
