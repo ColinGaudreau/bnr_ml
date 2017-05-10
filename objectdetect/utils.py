@@ -106,75 +106,75 @@ class BoundingBox(object):
 
 	def __mul__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other, cls=self.cls, confidence=self.confidence)
 
 	def __rmul__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other, cls=self.cls, confidence=self.confidence)
 
 	def __imul__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0])
+			return BoundingBox(self.xi * other[1], self.yi * other[0], self.xf * other[1], self.yf * other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other)
+			return BoundingBox(self.xi * other, self.yi * other, self.xf * other, self.yf * other, cls=self.cls, confidence=self.confidence)
 
 	def __div__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other, cls=self.cls, confidence=self.confidence)
 
 	def __rdiv__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other, cls=self.cls, confidence=self.confidence)
 
 	def __idiv__(self, other):
 		if other.__class__ == tuple:
-			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0])
+			return BoundingBox(self.xi / other[1], self.yi / other[0], self.xf / other[1], self.yf / other[0], cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other)
+			return BoundingBox(self.xi / other, self.yi / other, self.xf / other, self.yf / other, cls=self.cls, confidence=self.confidence)
 
 	def __add__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other)
+			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf)
+			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf, cls=self.cls, confidence=self.confidence)
 
 	def __radd__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other)
+			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf)
+			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf, cls=self.cls, confidence=self.confidence)
 
 	def __iadd__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other)
+			return BoundingBox(self.xi + other, self.yi + other, self.xf + other, self.yf + other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf)
+			return BoundingBox(self.xi + other.xi, self.yi + other.yi, self.xf + other.xf, self.yf + other.yf, cls=self.cls, confidence=self.confidence)
 
 	def __sub__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other)
+			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf)
+			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf, cls=self.cls, confidence=self.confidence)
 
 	def __rsub__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other)
+			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf)
+			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf, cls=self.cls, confidence=self.confidence)
 
 	def __isub__(self, other):
 		if other.__class__ != BoundingBox:
-			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other)
+			return BoundingBox(self.xi - other, self.yi - other, self.xf - other, self.yf - other, cls=self.cls, confidence=self.confidence)
 		else:
-			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf)
+			return BoundingBox(self.xi - other.xi, self.yi - other.yi, self.xf - other.xf, self.yf - other.yf, cls=self.cls, confidence=self.confidence)
 
 	@staticmethod
 	def gen_randombox(overlap, box, eps=.9):

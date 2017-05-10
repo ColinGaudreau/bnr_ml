@@ -281,7 +281,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		coord = coord[np.arange(coord.shape[0]), class_id][is_obj]
 		coord[:,2:] = np.exp(coord[:,2:])
 		coord[:,:2] -= coord[:,2:]/2
-		regions = [box for (o,box) in zip(is_obj, regions) if o]
 
 		# re-adjust boxes for the image
 		objects = []
@@ -298,7 +297,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 				cls = class_id[i]
 				if num_to_label is not None:
 					cls = num_to_label[cls]
-				pdb.set_trace()
 				obj = BoundingBox(*coord[i,:].tolist(), cls=cls, confidence=class_score[i])
 				obj *= scale_factor
 				objects.append(obj)
