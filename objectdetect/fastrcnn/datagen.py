@@ -14,13 +14,13 @@ import cv2
 
 import pdb
 
-def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose=True):
+def generate_examples_for_annotations(annotations, n_box=20, n_neg=200, n_pos=200, verbose=True):
     examples = []
     for i in range(annotations.__len__()):
         imsize = annotations[i]['size']
         annotation = annotations[i]['annotations']
         boxes = format_boxes(annotation)
-        proposals = generate_proposal_boxes(boxes, n_box=40)
+        proposals = generate_proposal_boxes(boxes, imsize, n_box=n_box)
         neg_idx, pos_idx, obj_idx = find_valid_boxes(boxes, proposals)
         if neg_idx.size < n_neg:
             neg_idx = np.concatenate((neg_idx, npr.choice(neg_idx, size=n_neg - neg_idx.size, replace=True)))
@@ -31,7 +31,7 @@ def generate_examples_for_annotations(annotations, n_neg=200, n_pos=200, verbose
 
         neg_idx = npr.choice(neg_idx, size=n_neg, replace=False)
         idx = np.arange(pos_idx.size); idx = npr.choice(idx, size=n_pos, replace=False)
-        pos_idx, obj_idx = pos_idx[idx], neg_idx[idx]
+        pos_idx, obj_idx = pos_idx[idx], obj_idx[idx]
 
         example = {}
         example['negative'] = proposals[neg_idx]
