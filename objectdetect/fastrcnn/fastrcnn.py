@@ -38,6 +38,7 @@ class FastRCNNSettings(BaseLearningSettings):
 			train_annotations,
 			test_annotations,
 			train_args,
+			test_args,
 			data_generator=datagen.generate_data,
 			print_obj=StreamPrinter(open('/dev/stdout','w')),
 			update_fn=rmsprop,
@@ -49,6 +50,7 @@ class FastRCNNSettings(BaseLearningSettings):
 		self.train_annotations = train_annotations
 		self.test_annotations = test_annotations
 		self.train_args = train_args
+		self.test_args = test_args
 		self.data_generator = data_generator
 		self.print_obj = print_obj
 		self.update_fn = update_fn
@@ -156,6 +158,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		train_annotations = self.settings.train_annotations
 		test_annotations = self.settings.test_annotations
 		train_args = self.settings.train_args
+		test_args = self.settings.test_args
 		data_generator = self.settings.data_generator
 		print_obj = self.settings.print_obj
 		update_fn = self.settings.update_fn
@@ -195,7 +198,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
 		
-		for Xbatch, boxes_batch, ybatch in data_generator(test_annotations, **train_args):
+		for Xbatch, boxes_batch, ybatch in data_generator(test_annotations, **test_args):
 			test_loss_batch.append(self._test_fn(Xbatch, boxes_batch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
