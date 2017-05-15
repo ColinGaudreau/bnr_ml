@@ -22,7 +22,7 @@ from bnr_ml.objectdetect.nms import nms
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 from bnr_ml.objectdetect.fastrcnn.roi_layer import ROILayer
-import bnr_ml.objectdetect.fastrcnn.datagen as datagen
+import datagen
 
 from copy import deepcopy
 from itertools import tee

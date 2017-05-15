@@ -149,6 +149,8 @@ def scale_to_unit_interval(ndar, eps=1e-8):
 	return ndar
 
 def format_image(im, dtype=np.float64):
+	if im.shape.__len__() < 2:
+		im = im[0]
 	if im.dtype != dtype:
 		im = im.astype(dtype)
 	if im.shape.__len__() == 2:

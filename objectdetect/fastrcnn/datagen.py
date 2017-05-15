@@ -37,7 +37,7 @@ def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, n_pos=40
 		example = {}
 		example['negative'] = proposals[neg_idx]
 		pos_example = {}
-		pos_example['proposals'] = proposals[neg_idx]
+		pos_example['proposals'] = proposals[pos_idx]
 		pos_example['object'] = obj_idx
 		example['positive'] = pos_example
 		examples.append(example)
@@ -52,8 +52,9 @@ def generate_example_2(annotation, imsize, n_classes, neg_proposals, pos_proposa
 
 	# fill negative examples
 	idx = np.arange(neg_proposals.shape[0]); idx = npr.choice(idx, size=n_neg, replace=False)
+	neg_proposals[idx,2:] += neg_proposals[idx,:2]
 	boxes[:n_neg,:] = neg_proposals[idx,:]
-	boxes[:n_neg,[0,2]] /= imsize.shape[1], boxes[:n_neg,[1,3]] /= imsize.shape[0]
+	boxes[:n_neg,[0,2]] /= imsize[1]; boxes[:n_neg,[1,3]] /= imsize[0]
 	# set class label to be the "no object" class.
 	y[:n_neg,-1] = 1
 
@@ -65,22 +66,24 @@ def generate_example_2(annotation, imsize, n_classes, neg_proposals, pos_proposa
 		coord = np.asarray([annotation[obj_idx[i]]['x'],annotation[obj_idx[i]]['y'],annotation[obj_idx[i]]['w'],annotation[obj_idx[i]]['h']])
 
 		# get proposal box formatted for ROI layer
-		box = np.copy(proposal); box[2:] += box[:2]
-		box[[0,2]] /= imsize[1], box[[1,3]] /= imsize[0]
+		box = np.copy(proposal)
+		box[2:] += box[:2]
+		box[[0,2]] /= imsize[1]; box[[1,3]] /= imsize[0]
 		boxes[n_neg+i] = box
-
+		
 		# convert coordinate
 		coord[0] -= proposal[0]; coord[1] -= proposal[1]
-		coord[2] /= np.diff(proposal[[0,2]]); coord[3] /= np.diff(proposal[[1,3]])
+		coord[0] += (coord[2]/2); coord[1] += (coord[3]/2)
+		coord[[0,2]] /= proposal[2]; coord[[1,3]] /= proposal[3]
 		coord[2:] = np.log(coord[2:])
 
-		y[n_neg+i,:4] = coord; y[n_neg+i,-3 + label_to_num[annotation[obj_idx[i]]['class']]] = 1.
+		y[n_neg+i,:4] = coord; y[n_neg+i,-3 + label_to_num[annotation[obj_idx[i]]['label']]] = 1.
 
 	return boxes, y
 
 def generate_data_from_datastore(
 		annotations,
-		proposal_file,
+		proposals,
 		input_shape=None,
 		n_classes=None,
 		label_to_num=None,
@@ -92,8 +95,6 @@ def generate_data_from_datastore(
 	'''
 	Uses stored proposals for a given annotation set
 	'''
-	with open(proposal_file, 'rb') as f:
-		proposals = pk.load(f)
 
 	if not isinstance(annotations, np.ndarray):
 		annotations = np.asarray(annotations)
@@ -109,7 +110,7 @@ def generate_data_from_datastore(
 
 	X = np.zeros((batch_size, 3) + input_shape, dtype=theano.config.floatX)
 	boxes = np.zeros((batch_size, n_total, 4), dtype=theano.config.floatX)
-	y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+	y = np.zeros((n_total * batch_size, 4 + n_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
 		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
@@ -130,7 +131,7 @@ def generate_data_from_datastore(
 				yield X, boxes, y
 			X = np.zeros((batch_size, 3) + input_shape, dtype=theano.config.floatX)
 			boxes = np.zeros((batch_size, n_total, 4), dtype=theano.config.floatX)
-			y = np.zeros((n_total * batch_size, 4 + num_classes + 1), dtype=theano.config.floatX)
+			y = np.zeros((n_total * batch_size, 4 + n_classes + 1), dtype=theano.config.floatX)
 			cnt = 0
 
 def format_boxes(annotation):
