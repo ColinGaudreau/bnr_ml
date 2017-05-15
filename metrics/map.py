@@ -9,16 +9,12 @@ def average_precision(boxes, scores, labels, min_iou=0.5, return_pr_curve=False)
 	'''
 	Calculate average precision given predictions, labels, class.
 
-	predictions - N x 5 matrix, first 4 are coordinates for bounding box,
-		last is the confidence score.  These should be the restricted to the
-		predictions for the specified class
-
 	labels - list of dictionaries containing labels, this should be restricted to
 		the relevant class.
 	'''
 	assert(boxes.__len__() == scores.__len__())
 
-	boxes, scores = np.asarray(boxes), np.asarray(scores)
+	boxes, scores = np.asarray(boxes), np.asarray([box.confidence for box in boxes])
 
 	# order predictions in descending order of confidence
 	idx = np.argsort(scores)[::-1]
@@ -65,22 +61,41 @@ def _ap(precision, recall):
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
-	aps = []
+	aps = {}
+	for label in num_to_label:
+		aps[label] = []
 	detector_args.update({'num_to_label': num_to_label})
 	
 	if verbose:
 		print_obj.println('Beginning mean average precision calculation...')
 	for i, annotation in enumerate(annotations):
 		labels = []
-		predictions = detector.detect(imread(annotation['image']), **detector_args)
-		for key, cls in num_to_label.iteritems():
-			labels = [label for label in annotation['annotations'] if label['label'] == cls]
-			if cls in predictions:
-				aps.append(average_precision(predictions[cls]['boxes'], predictions[cls]['scores'], labels))
-		if verbose:
-			print_obj.println('Annotation %d complete, mAP so far: %3f' % (i, np.mean(aps)))
+		# get all object types in image
+		img_classes = np.unique([o['label'] for o in annotation['annotations']]).tolist()
 
-	return np.mean(aps)
+		preds = detector.detect(imread(annotation['image']), **detector_args)
+		for cls in img_classes:
+			labels = [label for label in annotation['annotations'] if label['label'] == cls]
+
+			in_pred = False
+			for box in preds:
+				if box.cls == cls:
+					in_pred = True
+					break
+
+			if in_pred:
+				aps[cls].append(average_precision([box for box in preds if box.cls == cls], labels))
+			else:
+				aps[cls].append(0.)
+
+		if verbose:
+			mean_ap = np.mean([np.mean(ap) for _, ap in aps.iteritems() if len(ap) > 0])
+			print_obj.println('Annotation %d complete, mAP so far: %.3f' % (i, mean_ap))
+
+	class_ap = {}
+	for key, ap in aps.iteritems():
+		class_ap[key] = np.mean(ap)
+	return class_ap
 
 
 		

@@ -255,13 +255,6 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		# compile detection function if it has not yet been done
 		detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
 		if self._trained or not hasattr(self, '_detect_fn'):
-			# self._detect_input = theano.shared(detect_input_ndarray, name='detection_input', borrow=True)
-			# self.network['input'].input_var = self._detect_input
-			# detection = get_output(self.network['detect'], deterministic=True)
-			# localization = self._reshape_localization_layer(get_output(self.network['localize'], deterministic=True))
-			# self.network['input'].input_var = self.input
-
-			# need to add stuff to connect all of this
 			self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
 			self._trained = False
 		

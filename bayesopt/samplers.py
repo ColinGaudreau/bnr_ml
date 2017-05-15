@@ -17,7 +17,7 @@ class SliceSampler(object):
 			step_out_width = step_out_width * np.ones(x0.size)
 			assert bounds.__len__() == x0.size
 
-		if not np.log:
+		if not log:
 			self.logpdf = lambda x: np.log(pdf(x))
 		else:
 			self.logpdf = pdf
