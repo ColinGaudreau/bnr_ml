@@ -23,7 +23,7 @@ TYPE_DISCRETE = 'discrete'
 
 class BayesOpt(object):
 
-	def __init__(self, optfun, X, Y, noise, kernel, burnin=500, resample=50):
+	def __init__(self, optfun, X, Y, noise, kernel, bounds=None, burnin=500, resample=50, n_init=1):
 		assert(isinstance(kernel, BaseKernel))
 
 		self._dim = X.shape[1] if X.shape.__len__() > 1 else 1 # get dimension of input space
@@ -35,10 +35,27 @@ class BayesOpt(object):
 		self.burnin = burnin
 		self.resample = resample
 
+		if bounds == None:
+			bounds = []
+			for i in range(self._dim):
+				bounds.append((0.,1.))
+		assert(len(bounds) == self._dim)
+		self.bounds = bounds
+
+		if self.X.shape[0] == 0:
+			X_new, Y_new = self._random_search(n_init)
+			self.X, self.Y = np.concatenate((self.X, X_new), axis=0), np.concatenate((self.Y, Y_new), axis=0)
+
+		self._has_noise_prior = False
+		if isinstance(noise, Parameter):
+			self._has_noise_prior = True
+
 		# get initial values of kernel hyperparameters
-		x0 = np.zeros(kernel.parameters.__len__())
-		for i in range(x0.size):
+		x0 = np.zeros(kernel.parameters.__len__() + (1 if self._has_noise_prior else 0))
+		for i in range(kernel.parameters.__len__()):
 			x0[i] = kernel.parameters[i].value
+		if self._has_noise_prior:
+			x0[-1] = self.noise.value
 
 		self._recompute = True
 
@@ -46,6 +63,9 @@ class BayesOpt(object):
 		bounds = []
 		for par in self.kernel.parameters:
 			bounds.append(par.prior.support)
+		if self._has_noise_prior:
+			bounds.append(self.noise.prior.support)
+
 		if bounds.__len__() > 0:
 			self.sampler = SliceSampler(self._parameter_posterior, x0, bounds=bounds, log=True, burnin=burnin)
 			self.marginalize = True
@@ -55,19 +75,18 @@ class BayesOpt(object):
 
 	def optimize(
 			self,
-			bounds=None,
 			iters=20,
 			verbose=False,
 			num_samples=10,
 			marginalize=True,
 			num_grid=20,
-			tol=1e-3,
+			tol=1e-5,
 			search_type=SEARCH_SOBOL,
 			acq_type=ACQ_EI,
 			kappa=0.5,
 			squash=None
 		):
-
+		bounds = self.bounds
 		# determine whether or not to marginalize kernel hyperparameters
 		marginalize &= self.marginalize
 
@@ -93,7 +112,7 @@ class BayesOpt(object):
 
 			self.add_observation(optval, self.optfun(optval), tol)
 			if verbose:
-				print('Iteration {} complete, minimum at {}, value of {}'.format(i, self.X[np.argmin(self.Y),:], self.Y.min()))
+				print('Iteration {} complete, new point at {}, minimum at {}, value of {}'.format(i, optval, self.X[np.argmin(self.Y),:], self.Y.min()))
 
 		max_idx = np.argmin(self.Y)
 		return self.X[max_idx,:], self.Y[max_idx]
@@ -113,7 +132,8 @@ class BayesOpt(object):
 				vars[:,i] = var
 
 			mean = means.mean(axis=1)
-			var = mean**2 - (means**2 + vars**2).mean(axis=1)
+			# var = mean**2 - (means**2 + vars**2).mean(axis=1)
+			var = mean**2 - (means**2 + vars).mean(axis=1)
 		else:
 			mean, var = self._gp_posterior(x)
 
@@ -121,7 +141,11 @@ class BayesOpt(object):
 
 	def set_kernel_parameters(self, values):
 		self._recompute = True
-		self.kernel.set_parameters(values)
+		if self._has_noise_prior:
+			self.kernel.set_parameters(values[:-1])
+			self.noise.value = values[-1]
+		else:
+			self.kernel.set_parameters(values)
 
 	def add_observation(self, X_new, Y_new, tol):
 		X_new, Y_new = format_data(X_new, dim=self._dim), format_data(Y_new, dim=1)
@@ -140,6 +164,8 @@ class BayesOpt(object):
 		mean, variance
 		'''
 		X, Y, noise, kernel = self.X, self.Y, self.noise, self.kernel
+		if self._has_noise_prior:
+			noise = noise.value
 
 		x = format_data(x, dim=self._dim)
 
@@ -152,7 +178,7 @@ class BayesOpt(object):
 
 		mean = K_x.transpose().dot(alpha)
 		# var = kernel.compute_covariance(x, x) - v.transpose().dot(v)
-		var = kernel.compute_covariance(x, x, diag=True)[:,0] - (v * v).sum(axis=0) # compute ONLY the diagonal
+		var = kernel.compute_covariance(x, x, diag=True)[:,0] - (v * v).sum(axis=0) + noise # compute ONLY the diagonal
 
 		return mean[:,0], var
 
@@ -167,7 +193,10 @@ class BayesOpt(object):
 		kernel hyperparameters
 		'''
 		self.set_kernel_parameters(values)
-		return self._gp_loglikelihood() + self.kernel.logprior()
+		val = self._gp_loglikelihood() + self.kernel.logprior()
+		if self._has_noise_prior:
+			val += self.noise.logprob()
+		return val
 
 	def _ei(self, x):
 		y_best = np.max(self.Y)
@@ -234,10 +263,27 @@ class BayesOpt(object):
 
 	def _compute_aux(self):
 		X, Y, noise, kernel = self.X, self.Y, self.noise, self.kernel
+		if self._has_noise_prior:
+			noise = noise.value
 		self._L, self._lower = linalg.cho_factor(kernel.compute_covariance(X, X) + noise * np.eye(X.shape[0]), lower=True)
 		self._alpha = linalg.cho_solve((self._L, self._lower), Y)
 		self._ll = -0.5 * Y.transpose().dot(self._alpha) - np.log(np.diag(self._L)).sum() - float(X.shape[0])/2 * np.log(2 * np.pi) # marginal log likelihood
 		self._recompute = False
 		return
 
+	def _random_search(self, n_points):
+		X_new, Y_new = np.zeros((n_points, self._dim)), np.zeros((n_points,1))
+
+		for i in range(n_points):
+			x_new = np.zeros((self._dim,))
+			for d, bound in enumerate(self.bounds):
+				if isinstance(bound, list):
+					bound = np.asarray(bound)
+					x_new[d] = bound[npr.randint(bound.size)]
+				else:
+					x_new[d] = bound[0] + (bound[1] - bound[0]) * npr.rand()
+			X_new[i,:] = x_new
+			Y_new[i] = self.optfun(x_new)
+
+		return X_new, Y_new
 

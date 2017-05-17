@@ -14,6 +14,9 @@ class Parameter(object):
 		self.value = value
 		self.prior = prior
 
+	def logprob(self):
+		return self.prior.logprob(self.value)
+
 	def __repr__(self):
 		return 'Parameter({}, {})'.format(self.value, self.prior)
 
@@ -68,6 +71,28 @@ class SquaredExpKernel(BaseKernel):
 			cov = np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
 		else:
 			cov = self.parameters[1].value * np.exp(-((x - y)**2).sum(axis=2) / self.parameters[0].value)
+
+		if self.parameters.__len__() > 2:
+			cov += (self.parameters[2].value * np.eye(cov.shape[0]))
+
+		return cov
+
+class AbsExpKernel(BaseKernel):
+	def __init__(self, parameters=[]):
+		if parameters.__len__() == 0:
+			self.parameters = [Parameter(1., GammaPrior())]
+		else:
+			for par in parameters:
+				assert(isinstance(par, Parameter))
+			self.parameters = parameters
+
+	def compute_covariance(self, x, y, diag=False):
+		x, y = self._format_vects(x, y, diag=diag)
+		cov = 0
+		if self.parameters.__len__() < 2:
+			cov = np.exp(-np.abs((x - y)).sum(axis=2) / self.parameters[0].value)
+		else:
+			cov = self.parameters[1].value * np.exp(-np.abs((x - y)).sum(axis=2) / self.parameters[0].value)
 
 		if self.parameters.__len__() > 2:
 			cov += (self.parameters[2].value * np.eye(cov.shape[0]))
@@ -146,6 +171,15 @@ class DiscreteKernel(BaseKernel):
 	Kernel for discrete data:
 	K(x, y) = {1 if x = j, 0 otherwise}
 	'''
+	def __init__(self, parameters=[]):
+		self.parameters = parameters
+		# if parameters.__len__() == 0:
+		# 	self.parameters = [Parameter(1., GammaPrior(3., 1.))]
+		# else:
+		# 	for par in parameters:
+		# 		assert(isinstance(par, Parameter))
+		# 	self.parameters = parameters
+
 	def compute_covariance(self, x, y, diag=False):
 		x, y = self._format_vects(x, y, diag=diag)
 
@@ -155,26 +189,28 @@ class DiscreteKernel(BaseKernel):
 		return equal_idx
 
 class MixedKernel(BaseKernel):
-	def __init__(self, cont_kernel, feature_types):
+	'''
+	Use a different kernel for different sorts of kernels.
+	'''
+	def __init__(self, feature_map):
+		'''
+		feature_map: list of tuples where the first entry is a kernel, and the second is the corresponding variable indices as an numpy.ndarray.
+		'''
 		super(MixedKernel, self).__init__()
-		self.cont_kernel = cont_kernel
-		self.disc_kernel = DiscreteKernel()
-		self.feature_types = feature_types
-
-		self.parameters = []
-		self.parameters.extend(self.cont_kernel.parameters)
-		self.parameters.extend(self.disc_kernel.parameters)
+		self.kernels, self.maps, self.parameters = [], [], []
+		for kernel, mp in feature_map:
+			self.kernels.append(kernel)
+			self.maps.append(mp)
+			self.parameters.extend(kernel.parameters)
 
 	def compute_covariance(self, x, y, diag=False):
 		x, y = format_data(x), format_data(y)
 
-		cont_idx = np.asarray([ft == bayesopt.TYPE_CONTINUOUS for ft in self.feature_types])
-		disc_idx = np.asarray([ft == bayesopt.TYPE_DISCRETE for ft in self.feature_types])
+		covs = []
+		for kernel, idx in zip(self.kernels, self.maps):
+			covs.append(kernel.compute_covariance(x[:,idx], y[:,idx], diag=diag))
 
-		val = self.cont_kernel.compute_covariance(x[:,cont_idx], y[:,cont_idx], diag=diag) * \
-			self.disc_kernel.compute_covariance(x[:,disc_idx], y[:,disc_idx], diag=diag)
-
-		return val
+		return np.prod(covs, axis=0)
 
 
 
