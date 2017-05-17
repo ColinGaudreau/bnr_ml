@@ -5,15 +5,13 @@ from skimage.io import imread
 
 import pdb
 
-def average_precision(boxes, scores, labels, min_iou=0.5, return_pr_curve=False):
+def average_precision(boxes, labels, min_iou=0.5, return_pr_curve=False):
 	'''
 	Calculate average precision given predictions, labels, class.
 
 	labels - list of dictionaries containing labels, this should be restricted to
 		the relevant class.
 	'''
-	assert(boxes.__len__() == scores.__len__())
-
 	boxes, scores = np.asarray(boxes), np.asarray([box.confidence for box in boxes])
 
 	# order predictions in descending order of confidence
@@ -62,7 +60,7 @@ def _ap(precision, recall):
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
 	aps = {}
-	for label in num_to_label:
+	for _, label in num_to_label.iteritems():
 		aps[label] = []
 	detector_args.update({'num_to_label': num_to_label})
 	
