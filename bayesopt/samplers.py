@@ -8,6 +8,9 @@ class SliceSampler(object):
 	Very basic slice sampler
 	'''
 	def __init__(self, pdf, x0, step_out_width=.05, step_out_method='double', burnin=100, seed=1991, bounds=None, log=True):
+		if bounds is None:
+			bounds = [(-np.inf, np.inf) for d in range(x0.shape[0])]
+
 		if isinstance(x0, list):
 			x0 = np.asarray(x0)
 		elif isinstance(x0, float) or isinstance(x0, int):
@@ -15,7 +18,7 @@ class SliceSampler(object):
 
 		if isinstance(x0, np.ndarray):
 			step_out_width = step_out_width * np.ones(x0.size)
-			assert bounds.__len__() == x0.size
+			assert bounds is None or bounds.__len__() == x0.size
 
 		if not log:
 			self.logpdf = lambda x: np.log(pdf(x))
