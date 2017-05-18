@@ -39,11 +39,10 @@ def average_precision(boxes, labels, min_iou=0.5, return_pr_curve=False):
 			was_used[best_label] = True
 		else:
 			fp[i] += 1.
-
+	
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
 	recall = tp / num_labels if num_labels > 0 else tp * 0
 	precision = tp / (tp + fp)
-
 	return _ap(precision, recall)
 
 def _ap(precision, recall):
@@ -51,11 +50,9 @@ def _ap(precision, recall):
 	prec[1:-1], rec[1:-1] = precision, recall
 	prec[0], prec[-1] = 0., 0.
 	rec[0], rec[-1] = 0., 1.
-	
 	for i in range(prec.size - 2, -1, -1):
 		prec[i] = max(prec[i], prec[i+1])
-
-	index = np.asarray([i + 1 for i in range(rec.size - 1) if rec[i] != rec[i+1]])
+	index = np.asarray([i + 1 for i in range(rec.size - 1) if np.abs(rec[i] - rec[i+1]) > 1e-5])
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
