@@ -143,7 +143,7 @@ def precision(detector, annotations, num_to_label, verbose=True, print_obj=Strea
 
 		boxes = detector.detect(imread(annotation['image']), **detector_args)
 
-		if len(preds) == 0:
+		if len(boxes) == 0:
 			precisions.append(0.)
 		else:
 			precisions.append(_precision_per_box(boxes, annotation['annotations']))
