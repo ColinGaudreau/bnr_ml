@@ -18,12 +18,23 @@ SEARCH_GRID = 'grid'
 ACQ_EI = 'expected_improvement'
 ACQ_UCB = 'upper_confidence_bound'
 
-TYPE_CONTINUOUS = 'continous'
-TYPE_DISCRETE = 'discrete'
-
 class BayesOpt(object):
 
-	def __init__(self, optfun, X, Y, noise, kernel, bounds=None, burnin=500, resample=50, n_init=1):
+	def __init__(
+			self,
+			optfun,
+			X,
+			Y,
+			noise,
+			kernel,
+			bounds=None,
+			burnin=500,
+			resample=50,
+			n_init=1,
+			tol=1e-6,
+			sampler=SimpleSliceSampler,
+			sampler_args={}
+		):
 		assert(isinstance(kernel, BaseKernel))
 
 		self._dim = X.shape[1] if X.shape.__len__() > 1 else 1 # get dimension of input space
@@ -34,6 +45,7 @@ class BayesOpt(object):
 		self.kernel = kernel
 		self.burnin = burnin
 		self.resample = resample
+		self.tol = tol
 
 		if bounds == None:
 			bounds = []
@@ -45,6 +57,8 @@ class BayesOpt(object):
 		if self.X.shape[0] == 0:
 			X_new, Y_new = self._random_search(n_init)
 			self.X, self.Y = np.concatenate((self.X, X_new), axis=0), np.concatenate((self.Y, Y_new), axis=0)
+
+		self._nu = npr.randn(self.X.shape[0],1)
 
 		self._has_noise_prior = False
 		if isinstance(noise, Parameter):
@@ -67,7 +81,7 @@ class BayesOpt(object):
 			bounds.append(self.noise.prior.support)
 
 		if bounds.__len__() > 0:
-			self.sampler = SliceSampler(self._parameter_posterior, x0, bounds=bounds, log=True, burnin=burnin)
+			self.sampler = sampler(self._parameter_posterior, x0, bounds=bounds, log=True, burnin=burnin, **sampler_args)
 			self.marginalize = True
 		else:
 			self.sampler = None
@@ -79,8 +93,7 @@ class BayesOpt(object):
 			verbose=False,
 			num_samples=10,
 			marginalize=True,
-			num_grid=20,
-			tol=1e-5,
+			num_grid=1000,
 			search_type=SEARCH_SOBOL,
 			acq_type=ACQ_EI,
 			kappa=0.5,
@@ -110,7 +123,7 @@ class BayesOpt(object):
 			else:
 				raise Exception('search_type={} not valid'.format(search_type))
 
-			self.add_observation(optval, self.optfun(optval), tol)
+			self.add_observation(optval, self.optfun(optval))
 			if verbose:
 				print('Iteration {} complete, new point at {}, minimum at {}, value of {}'.format(i, optval, self.X[np.argmin(self.Y),:], self.Y.min()))
 
@@ -147,11 +160,12 @@ class BayesOpt(object):
 		else:
 			self.kernel.set_parameters(values)
 
-	def add_observation(self, X_new, Y_new, tol):
+	def add_observation(self, X_new, Y_new):
 		X_new, Y_new = format_data(X_new, dim=self._dim), format_data(Y_new, dim=1)
-		if np.sqrt(np.sum((self.X - X_new)**2, axis=1)).min() > tol:
+		if np.sqrt(np.sum((self.X - X_new)**2, axis=1)).min() > self.tol:
 			self.X = np.concatenate((self.X, X_new), axis=0)
 			self.Y = np.concatenate((self.Y, Y_new), axis=0)
+			self._nu = npr.randn(self.X.shape[0], 1)
 			if self.marginalize and self.sampler is not None:
 				_ = self.sampler.sample(self.resample) # re-sample
 			self._recompute = True
@@ -186,6 +200,7 @@ class BayesOpt(object):
 		if self._recompute:
 			self._compute_aux()
 		return self._ll
+		# return self._ll_whitened
 
 	def _parameter_posterior(self, values):
 		'''
@@ -196,6 +211,7 @@ class BayesOpt(object):
 		val = self._gp_loglikelihood() + self.kernel.logprior()
 		if self._has_noise_prior:
 			val += self.noise.logprob()
+
 		return val
 
 	def _ei(self, x):
@@ -261,16 +277,6 @@ class BayesOpt(object):
 
 		return xvalues[[max_idx], :]
 
-	def _compute_aux(self):
-		X, Y, noise, kernel = self.X, self.Y, self.noise, self.kernel
-		if self._has_noise_prior:
-			noise = noise.value
-		self._L, self._lower = linalg.cho_factor(kernel.compute_covariance(X, X) + noise * np.eye(X.shape[0]), lower=True)
-		self._alpha = linalg.cho_solve((self._L, self._lower), Y)
-		self._ll = -0.5 * Y.transpose().dot(self._alpha) - np.log(np.diag(self._L)).sum() - float(X.shape[0])/2 * np.log(2 * np.pi) # marginal log likelihood
-		self._recompute = False
-		return
-
 	def _random_search(self, n_points):
 		X_new, Y_new = np.zeros((n_points, self._dim)), np.zeros((n_points,1))
 
@@ -286,4 +292,21 @@ class BayesOpt(object):
 			Y_new[i] = self.optfun(x_new)
 
 		return X_new, Y_new
+
+	def _compute_aux(self):
+		X, Y, noise, kernel = self.X, self.Y, self.noise, self.kernel
+		if self._has_noise_prior:
+			noise = noise.value
+		self._cov = kernel.compute_covariance(X, X)
+		self._L, self._lower = linalg.cho_factor(self._cov + noise * np.eye(X.shape[0]), lower=True)
+		self._alpha = linalg.cho_solve((self._L, self._lower), Y)
+		self._ll = -0.5 * Y.transpose().dot(self._alpha) - np.log(np.diag(self._L)).sum() - float(X.shape[0])/2 * np.log(2 * np.pi) # marginal log likelihood
+		self._recompute = False
+
+		# L, lower = linalg.cho_factor(self._cov + 1e-8 * np.eye(self.X.shape[0]), lower=True)
+		# f_aux = L.dot(self._nu)
+		# alpha = linalg.cho_solve((L, lower), f_aux)
+		# self._ll_whitened = -0.5*f_aux.transpose().dot(alpha) - np.log(np.diag(L)).sum() - float(self.X.shape[0]) / 2 * np.log(2 * np.pi)
+
+		return
 
