@@ -143,7 +143,7 @@ def precision(detector, annotations, num_to_label, verbose=True, print_obj=Strea
 
 		boxes = detector.detect(imread(annotation['image']), **detector_args)
 
-		if len(preds) == 0:
+		if len(boxes) == 0:
 			precisions.append(0.)
 		else:
 			precisions.append(_precision_per_box(boxes, annotation['annotations']))
@@ -192,7 +192,7 @@ def _f1_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 
 	return 2*tp / (2*tp + fp + max(len(labels) - tp, 0))
 
-def f1_score(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
+def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
 	f1_scores = []
 	detector_args.update({'num_to_label': num_to_label})
 	
@@ -205,15 +205,15 @@ def f1_score(detector, annotations, num_to_label, verbose=True, print_obj=Stream
 
 		boxes = detector.detect(imread(annotation['image']), **detector_args)
 
-		if len(preds) == 0:
+		if len(boxes) == 0:
 			f1_scores.append(0.)
 		else:
-			f1_scores.append(_f1_per_box(boxes, annotation['annotations']))
+			f1_scores.append(_f1_per_box(boxes, annotation['annotations'], min_iou=min_iou))
 
 		if verbose:
 			print_obj.println('Annotation %d complete, mean f1 score so far: %.3f' % (i, np.mean(f1_scores)))
 
-	return np.mean(precisions)
+	return np.mean(f1_scores)
 
 
 		
