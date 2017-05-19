@@ -9,7 +9,6 @@ def nms(boxes, *args, **kwargs):
 	n_apply = 1
 	if 'n_apply' in kwargs:
 		n_apply = kwargs['n_apply']
-	print n_apply
 	classes = list(set([box.cls for box in boxes]))
 	boxes = copy.deepcopy(boxes)
 	for _ in range(n_apply):
