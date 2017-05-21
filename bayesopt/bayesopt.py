@@ -6,8 +6,7 @@ from scipy.optimize import brute, fmin_slsqp
 from kernels import *
 from samplers import *
 from priors import *
-from utils import format_data
-from sobol import i4_sobol_generate as sobol
+from utils import format_data, sobol_seq
 
 import pdb
 
@@ -32,7 +31,8 @@ class BayesOpt(object):
 			resample=50,
 			n_init=1,
 			tol=1e-6,
-			sampler=SimpleSliceSampler,
+			sobol_seed=1991,
+			sampler=MDSliceSampler,
 			sampler_args={}
 		):
 		assert(isinstance(kernel, BaseKernel))
@@ -46,6 +46,7 @@ class BayesOpt(object):
 		self.burnin = burnin
 		self.resample = resample
 		self.tol = tol
+		self._sobol_seed = sobol_seed
 
 		if bounds == None:
 			bounds = []
@@ -145,8 +146,8 @@ class BayesOpt(object):
 				vars[:,i] = var
 
 			mean = means.mean(axis=1)
-			# var = mean**2 - (means**2 + vars**2).mean(axis=1)
-			var = mean**2 - (means**2 + vars).mean(axis=1)
+			var = vars.mean(axis=1)
+			# var = mean**2 - (means**2 + vars).mean(axis=1)
 		else:
 			mean, var = self._gp_posterior(x)
 
@@ -191,7 +192,7 @@ class BayesOpt(object):
 		v = linalg.solve_triangular(L, K_x, lower=lower)
 
 		mean = K_x.transpose().dot(alpha)
-		# var = kernel.compute_covariance(x, x) - v.transpose().dot(v)
+
 		var = kernel.compute_covariance(x, x, diag=True)[:,0] - (v * v).sum(axis=0) + noise # compute ONLY the diagonal
 
 		return mean[:,0], var
@@ -236,7 +237,7 @@ class BayesOpt(object):
 		return val
 
 	def _sobol_search(self, optfun, num_points, bounds=None, squash=None):
-		xvalues = sobol(self._dim, num_points, 50).transpose()
+		xvalues, self._sobol_seed = sobol_seq(self._dim, num_points, 50, seed=self._sobol_seed)
 		if bounds is not None:
 			for i, bound in enumerate(bounds):
 				if isinstance(bound, tuple):
@@ -305,8 +306,8 @@ class BayesOpt(object):
 
 		# L, lower = linalg.cho_factor(self._cov + 1e-8 * np.eye(self.X.shape[0]), lower=True)
 		# f_aux = L.dot(self._nu)
-		# alpha = linalg.cho_solve((L, lower), f_aux)
-		# self._ll_whitened = -0.5*f_aux.transpose().dot(alpha) - np.log(np.diag(L)).sum() - float(self.X.shape[0]) / 2 * np.log(2 * np.pi)
+		# var = self.noise.value if isinstance(self.noise, Parameter) else self.noise
+		# self._ll_whitened = -((self.Y - f_aux)**2 / 2 / var).sum() - self.Y.shape[0] * np.log(var) - (self.Y.shape[0] * np.log(2 * np.pi)) / 2
 
 		return
 

@@ -4,7 +4,7 @@ import numpy as np
 import numpy.random as npr
 
 from bnr_ml.utils.helpers import StreamPrinter, meshgrid, format_image
-from bnr_ml.utils.nonlinearities import softmax, smooth_abs
+from bnr_ml.utils.nonlinearities import softmax, smooth_abs, smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.objectdetect.nms import nms
 
@@ -361,10 +361,10 @@ class SingleShotDetector(BaseLearningObject):
 			# penalize coordinates
 			cost_fmap = 0.
 
-			cost_fmap += ((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()]**2).sum()
-			cost_fmap += ((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()]**2).sum()
-			cost_fmap += ((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()]**2).sum()
-			cost_fmap += ((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()]**2).sum()
+			cost_fmap += (smooth_l1((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])).sum()
+			cost_fmap += (smooth_l1((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()])).sum()
+			cost_fmap += (smooth_l1((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()])).sum()
+			cost_fmap += (smooth_l1((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()])).sum()
 
 			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())

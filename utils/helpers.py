@@ -6,6 +6,7 @@ import os
 from skimage.io import imread
 from skimage.color import rgb2gray
 from skimage.transform import resize, rotate
+
 import pdb
 
 class StreamPrinter(object):
