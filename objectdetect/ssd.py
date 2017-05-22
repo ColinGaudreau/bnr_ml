@@ -183,7 +183,7 @@ class SingleShotDetector(BaseLearningObject):
 
 		return train_loss, test_loss
 
-	def detect(self, im, thresh=0.75, overlap=0.4, num_to_label=None):
+	def detect(self, im, thresh=0.75, overlap=0.4, n_apply=1, num_to_label=None):
 		old_size = im.shape[:2]
 		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_NEAREST)
 		im = format_image(im, theano.config.floatX)
@@ -194,16 +194,7 @@ class SingleShotDetector(BaseLearningObject):
 
 		detections = self._detect_fn(swap(im))
 
-		output = {}
-		for cls in range(self.num_classes):
-			if num_to_label is not None:
-				cls = num_to_label[cls]
-			output[cls] = {
-				'boxes': [],
-				'scores': []
-			}
-
-		# boxes, class_scores = [], []
+		boxes = []
 		for detection, dmap in zip(detections, self._default_maps_asarray):
 			for i in range(detection.shape[1]):
 				for j in range(detection.shape[3]):
@@ -216,17 +207,13 @@ class SingleShotDetector(BaseLearningObject):
 							if num_to_label is not None:
 								cls = num_to_label[cls]
 							box = BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]) * old_size
-							output[cls]['boxes'].append(box)
-							output[cls]['scores'].append(score.max())
+							box.cls = cls
+							box.confidence = score.max()
+							boxes.append(box)
 	
-		for cls, o in output.iteritems():
-			boxes, scores = nms(o['boxes'], scores=o['scores'], overlap=overlap)
-			output[cls] = {
-				'boxes': boxes,
-				'scores': scores
-			}
+		boxes = nms(boxes, overlap=overlap, n_apply=n_apply)'scores': scores
 
-		return output
+		return boxes
 	
 	def _build_default_maps(self):
 		'''
