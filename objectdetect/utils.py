@@ -85,6 +85,7 @@ class BoundingBox(object):
 		yi = max(0, self.yi)
 		xf = min(im.shape[1], self.xf)
 		yf = min(im.shape[0], self.yf)
+		xi, yi, xf, yf = int(xi), int(yi), int(xf), int(yf)
 		return im[yi:yf, xi:xf,:]
 
 	def round(self):

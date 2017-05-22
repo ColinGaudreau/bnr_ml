@@ -8,9 +8,7 @@ enum34==1.1.6
 functools32==3.2.3.post2
 idna==2.5
 ipaddress==1.0.18
-Lasagne==0.1
-Mako==1.0.6
-MarkupSafe==1.0
+Lasagne==0.2.dev1
 matplotlib==2.0.0
 networkx==1.11
 numpy==1.12.1
@@ -24,12 +22,13 @@ pyasn1==0.2.3
 pycparser==2.17
 pyparsing==2.2.0
 python-dateutil==2.6.0
-python-editor==1.0.3
 pytz==2017.2
 PyWavelets==0.5.2
 scikit-image==0.13.0
 scipy==0.19.0
+simplejson==3.10.0
 six==1.10.0
+sobol==0.9
 sobol-seq==0.1.2
 SQLAlchemy==1.1.9
 sqlalchemy-migrate==0.11.0
@@ -37,3 +36,4 @@ sqlparse==0.2.3
 subprocess32==3.2.7
 Tempita==0.5.2
 Theano==0.9.0
+tqdm==4.11.2
