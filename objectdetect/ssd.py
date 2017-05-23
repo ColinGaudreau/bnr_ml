@@ -210,7 +210,7 @@ class SingleShotDetector(BaseLearningObject):
 							box.confidence = score.max()
 							boxes.append(box)
 	
-		boxes = nms(boxes, overlap=overlap, n_apply=n_apply)'scores': scores
+		boxes = nms(boxes, overlap=overlap, n_apply=n_apply)
 
 		return boxes
 	
