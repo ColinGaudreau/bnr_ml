@@ -75,6 +75,10 @@ class BaseExperiment(object):
 				train_error, test_error = self.learning_object.train(*args, **kwargs)
 				train_errors.append(train_error); test_errors.append(test_error)
 
+				# if train/test error is nan then quit
+				if np.isnan(train_error) or np.isnan(test_error):
+					break
+
 				# save error and save weights
 				if self.use_db:
 					new_result = db.TrainingResult(train_error=train_error, test_error=test_error, iteration=i, experiment_id=self.experiment.id)
