@@ -10,6 +10,7 @@ from bnr_ml.utils.theano_extensions import argmin_unique
 from bnr_ml.objectdetect import utils
 from bnr_ml.objectdetect.nms import nms
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
+from yolo2_cost import yolo2_cost
 
 
 from collections import OrderedDict
@@ -162,8 +163,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			print_obj.println('Getting cost...\n')
 			ti = time.time()
-			cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
-			cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
+			constants = []
+			cost =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
+			cost =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
+			# cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
+			# cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 			
