@@ -165,7 +165,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			ti = time.time()
 			constants = []
 			cost =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
-			cost =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
+			cost_test =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
 			# cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
 			# cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
 			
@@ -177,8 +177,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			
 			print_obj.println('Compiling...\n')
 			ti = time.time()
-			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
-			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
+			self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target], cost_test)
 			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
 			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
 			
@@ -190,12 +190,13 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj)
+			pdb.set_trace()
+			err = self._train_fn(Xbatch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj))
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
