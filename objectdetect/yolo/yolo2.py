@@ -104,9 +104,18 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		return
 
 	def _format_output(self, output):
-		output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
-		output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
-		output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
+		# for old cost, gonna not do that cus I am meaaaaaan
+		# output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
+		# output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
+		# output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
+
+		obj_idx = T.arange(4, 5+self.num_classes, output.shape[1])
+		output = T.set_subtensor(output[:,:,obj_idx], T.nnet.sigmoid(output[:,:,obj_idx]))
+
+		for i in range(len(self.boxes)):
+			cls_idx = T.arange(self.num_classes) + 5 + i * (5 + self.num_classes)
+			output = T.set_subtensor(output[:,:,cls_idx], softmax(output[:,:,cls_idx], axis=2))
+
 		return output
 	
 	def get_params(self):
