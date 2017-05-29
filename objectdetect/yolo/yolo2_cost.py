@@ -568,3 +568,7 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		return thunk
 
 
+def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors):
+	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors)(x, truth)
+
+	
