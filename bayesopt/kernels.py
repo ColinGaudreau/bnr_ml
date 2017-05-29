@@ -9,8 +9,7 @@ import bayesopt
 import pdb
 
 class Parameter(object):
-	def __init__(self, value, prior):
-		assert(isinstance(prior, BasePrior))
+	def __init__(self, value, prior=None):
 		self.value = value
 		self.prior = prior
 
@@ -29,7 +28,7 @@ class BaseKernel(object):
 
 	def logprior(self):
 		val = 0.
-		for par in self.parameters:
+		for par in self.get_valid_parameters():
 			val += par.prior.logprob(par.value)
 		return val
 
@@ -37,9 +36,13 @@ class BaseKernel(object):
 		return np.asarray([par.value for par in self.parameters])
 
 	def set_parameters(self, values):
-		assert(values.size == self.parameters.__len__())
-		for i, par in enumerate(self.parameters):
+		valid_parameters = self.get_valid_parameters()
+		assert(len(valid_parameters) == values.size)
+		for i, par in enumerate(valid_parameters):
 			par.value = values[i]
+
+	def get_valid_parameters(self):
+		return [par for par in self.parameters if par.prior is not None]
 
 	def _format_vects(self, x, y, diag=False):
 		x, y = format_data(x), format_data(y)

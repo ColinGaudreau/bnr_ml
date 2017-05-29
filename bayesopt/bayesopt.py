@@ -11,11 +11,12 @@ from utils import format_data, sobol_seq
 import pdb
 
 # define constants
-SEARCH_SOBOL = 'sobol'
-SEARCH_GRID = 'grid'
+SEARCH_SOBOL = 0
+SEARCH_GRID = 1
 
-ACQ_EI = 'expected_improvement'
-ACQ_UCB = 'upper_confidence_bound'
+ACQ_EI = 0
+ACQ_UCB = 1
+ACQ_PI = 2
 
 class BayesOpt(object):
 
@@ -66,9 +67,10 @@ class BayesOpt(object):
 			self._has_noise_prior = True
 
 		# get initial values of kernel hyperparameters
-		x0 = np.zeros(kernel.parameters.__len__() + (1 if self._has_noise_prior else 0))
-		for i in range(kernel.parameters.__len__()):
-			x0[i] = kernel.parameters[i].value
+		kernel_parameters = kernel.get_valid_parameters()
+		x0 = np.zeros(len(kernel_parameters) + (1 if self._has_noise_prior else 0))
+		for i, par in enumerate(kernel_parameters):
+			x0[i] = par.value
 		if self._has_noise_prior:
 			x0[-1] = self.noise.value
 
@@ -76,7 +78,7 @@ class BayesOpt(object):
 
 		# get bounds on kernel parameters, see if you should marginalize
 		bounds = []
-		for par in self.kernel.parameters:
+		for par in kernel_parameters:
 			bounds.append(par.prior.support)
 		if self._has_noise_prior:
 			bounds.append(self.noise.prior.support)
@@ -223,7 +225,12 @@ class BayesOpt(object):
 
 	def _ucb(self, x, kappa):
 		mu, var = self._gp_posterior(x)
-		return mu - kappa * np.sqrt(var)
+		return -(mu - kappa * np.sqrt(var))
+
+	def _pi(self, x):
+		y_best = np.max(self.Y)
+		mu, var = self._gp_posterior(x)
+		return (y_best - mu) / np.sqrt(var)
 
 	def _integrated_acquisition(self, x, num_samples, acq_fun):
 		'''
