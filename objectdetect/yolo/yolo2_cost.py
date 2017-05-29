@@ -8,11 +8,13 @@ from lasagne.layers import Layer
 import numpy as np
 import numpy.random as npr
 
+import pycuda.gpuarray as gpuarray
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
+import pdb
 
-yolo_code = SourceModule("""
+yolo_mod = SourceModule("""
 	#include <stdio.h>
 	
 	struct asg3 {
@@ -411,7 +413,7 @@ class Tensor3Struct:
 	mem_size = 8 * 3 + np.intp(0).nbytes
 	def __init__(self, array, ptr):
 		assert(len(array.shape) == 3) 
-		if False: #isinstance(array, tcuda.CudaNdarray):
+		if isinstance(array, tcuda.CudaNdarray):
 			self.data = array.gpudata
 		else:
 			if array.dtype != np.float32:
@@ -431,7 +433,7 @@ class Tensor4Struct:
 	mem_size = 8 * 4 + np.intp(0).nbytes
 	def __init__(self, array, ptr):
 		assert(len(array.shape) == 4)
-		if False: #isinstance(array, tcuda.CudaNdarray):
+		if isinstance(array, tcuda.CudaNdarray):
 			self.data = array.gpudata
 		else:
 			if array.dtype != np.float32:
@@ -477,20 +479,20 @@ class PyCUDAYolo2Cost(theano.Op):
 		truth = tcuda.basic_ops.gpu_contiguous(
 			tcuda.basic_ops.as_cuda_ndarray_variable(truth)
 		)
-		return theano.Apply(self, [x,truth], [theano.config.floatX])
+		return theano.Apply(self, [x,truth], [T.scalar()])
 	
 	def infer_shape(self, node, ishapes):
-		return [ishape[0][:0]]
+		return [ishapes[0][:0]]
 	
 	def grad(self, inputs, grads):
 		x, truth = inputs[0], inputs[1]
-		truth = theano.gradient.grad_undefined(self, 1, truth, "PyCUDAYolo2Cost doesn't have a gradient w.r.t. the labels.")
-		x_grad = PyCUDAYolo2CostGrad(self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, anchors)(x, truth)
-		return [x_grad, boxes_grad]
+		truth_grad = theano.gradient.grad_undefined(self, 1, truth, "PyCUDAYolo2Cost doesn't have a gradient w.r.t. the labels.")
+		x_grad = PyCUDAYolo2CostGrad(self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, self.anchors)(x, truth)
+		return [x_grad, truth_grad]
 
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
-		index_fn = roi_mod.get_function("assign_boxes")
-		cost_fn = roi_mod.get_function("yolo_v2_cost")
+		index_fn = yolo_mod.get_function("assign_boxes")
+		cost_fn = yolo_mod.get_function("yolo_v2_cost")
 		inputs = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
 		n_classes, n_anchors, l_obj, l_noobj, anchors = self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, self.anchors
@@ -502,18 +504,18 @@ class PyCUDAYolo2Cost(theano.Op):
 				x[0].shape[:0],
 			)
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = tcuda.CudaNdarray.zeros(z_shape)
+				z[0] = None
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
 			cost_ptr, cost_obj = get_tens_ptr(np.zeros_like(x[0], dtype=theano.config.floatX))
-			best_idx_ptr = cuda.memalloc(8 * truth.shape[1] * truth.shape[0])
-			best_iou_ptr = cuda.memalloc(8 * truth.shape[1] * truth.shape[0])
+			best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
+			best_iou_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
 			yolo_ptr, _ = get_yolo_info(n_classes, n_anchors, l_obj, l_noobj, anchors)
 
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
-			z[0][0] = cuda.gpuarray.sum(cuda.gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
+			z[0] = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
 
 		return thunk
 
@@ -537,11 +539,11 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		return theano.Apply(self, [x,truth], [x.type()])
 	
 	def infer_shape(self, node, ishapes):
-		return [ishape[0]]
+		return [ishapes[0]]
 
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
-		index_fn = roi_mod.get_function("assign_boxes")
-		grad_fn = roi_mod.get_function("yolo_v2_grad")
+		index_fn = yolo_mod.get_function("assign_boxes")
+		grad_fn = yolo_mod.get_function("yolo_v2_grad")
 		inputs = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
 		n_classes, n_anchors, l_obj, l_noobj, anchors = self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, self.anchors
@@ -549,16 +551,14 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		def thunk():
 			x, truth = inputs[0], inputs[1]
 			z = outputs[0]
-			z_shape = (
-				x[0].shape[:0],
-			)
+			z_shape = x[0].shape
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = tcuda.CudaNdarray.zeros(x[0].shape)
+				z[0] = tcuda.CudaNdarray.zeros(z_shape)
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
-			z_ptr, _ = get_tens_ptr(z[0], dtype=theano.config.floatX))
-			best_idx_ptr = cuda.memalloc(8 * truth.shape[1] * truth.shape[0])
-			best_iou_ptr = cuda.memalloc(8 * truth.shape[1] * truth.shape[0])
+			z_ptr, _ = get_tens_ptr(z[0])
+			best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
+			best_iou_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
 			yolo_ptr, _ = get_yolo_info(n_classes, n_anchors, l_obj, l_noobj, anchors)
 
 			# get best index
