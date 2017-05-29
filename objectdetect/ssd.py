@@ -169,6 +169,8 @@ class SingleShotDetector(BaseLearningObject):
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
 			err = self._train_fn(Xbatch, ybatch)
+			if np.isnan(err):
+				pdb.set_trace()
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % (err,))
 
@@ -347,10 +349,10 @@ class SingleShotDetector(BaseLearningObject):
 			# penalize coordinates
 			cost_fmap = 0.
 
-			cost_fmap += (smooth_l1((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])).sum()
-			cost_fmap += (smooth_l1((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()])).sum()
-			cost_fmap += (smooth_l1((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()])).sum()
-			cost_fmap += (smooth_l1((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()])).sum()
+			cost_fmap += (((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])**2).sum()
+			cost_fmap += (((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()])**2).sum()
+			cost_fmap += (((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()])**2).sum()
+			cost_fmap += (((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()])**2).sum()
 
 			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
 			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())

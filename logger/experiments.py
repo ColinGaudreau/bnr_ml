@@ -77,6 +77,7 @@ class BaseExperiment(object):
 
 				# if train/test error is nan then quit
 				if np.isnan(train_error) or np.isnan(test_error):
+					print('NaN encountered, stopping training.')
 					break
 
 				# save error and save weights
