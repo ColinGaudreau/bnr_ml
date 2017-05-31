@@ -14,7 +14,7 @@ from pycuda.compiler import SourceModule
 
 import pdb
 
-yolo_mod = SourceModule("""
+yolo_code = """
 	#include <stdio.h>
 	
 	struct asg3 {
@@ -124,8 +124,6 @@ yolo_mod = SourceModule("""
 		// network predicts the center of the bounding box, we need to set x_1, x_2 to be the top left corner
 		box[0] += ((col+0.5)/predictions->shp.dim4 - box[2]/2);
 		box[1] += ((row+0.5)/predictions->shp.dim3 - box[3]/2);
-		if(anchor==0&&row==1&&col==1)
-			printf("%.2f, %.2f, %.2f, %.2f\\n", box[0], box[1], box[2], box[3]);
 	}
 	
 	__device__ void get_truth_box(float *box, tens3 *truth, int N, int gt)
@@ -389,7 +387,7 @@ yolo_mod = SourceModule("""
 			}
 		}
 	}
-""")
+"""
 
 class YoloInfo:
 	mem_size = 8*4 + np.intp(0).nbytes
@@ -464,7 +462,6 @@ def get_tens_ptr(array):
 
 class PyCUDAYolo2Cost(theano.Op):
 	__props__ = ()
-	
 	def __init__(self, n_classes, n_anchors, l_obj, l_noobj, anchors):
 		self.n_classes = n_classes
 		self.n_anchors = n_anchors
@@ -491,6 +488,7 @@ class PyCUDAYolo2Cost(theano.Op):
 		return [x_grad, truth_grad]
 
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
+		yolo_mod = SourceModule(yolo_code)
 		index_fn = yolo_mod.get_function("assign_boxes")
 		cost_fn = yolo_mod.get_function("yolo_v2_cost")
 		inputs = [storage_map[v] for v in node.inputs]
@@ -515,7 +513,10 @@ class PyCUDAYolo2Cost(theano.Op):
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
-			z[0] = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
+			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
+			foo = np.zeros(1, dtype=np.float32)
+			tmp.get(foo)
+			z[0] = foo[0]
 
 		return thunk
 
@@ -542,6 +543,7 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		return [ishapes[0]]
 
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
+		yolo_mod = SourceModule(yolo_code)
 		index_fn = yolo_mod.get_function("assign_boxes")
 		grad_fn = yolo_mod.get_function("yolo_v2_grad")
 		inputs = [storage_map[v] for v in node.inputs]
@@ -569,6 +571,6 @@ class PyCUDAYolo2CostGrad(theano.Op):
 
 
 def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors):
-	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors)(x, truth)
+	return T.sum(PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors)(x, truth))
 
 	

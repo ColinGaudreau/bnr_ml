@@ -103,20 +103,21 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		return
 
-	def _format_output(self, output):
+	def _format_output(self, feature_map):
 		# for old cost, gonna not do that cus I am meaaaaaan
-		# output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
-		# output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
-		# output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
-
-		obj_idx = T.arange(4, 5+self.num_classes, output.shape[1])
-		output = T.set_subtensor(output[:,:,obj_idx], T.nnet.sigmoid(output[:,:,obj_idx]))
-
+		#output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
+		#output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
+		#output = T.set_subtensor(output[:,:,-self.num_classes:], softmax(output[:,:,-self.num_classes:], axis=2))
+		#return output
+		obj_idx = T.arange(4, feature_map.shape[1], 5+self.num_classes)
+		feature_map = T.set_subtensor(feature_map[:,obj_idx], T.nnet.sigmoid(feature_map[:,obj_idx]))
+		
+		return feature_map
 		for i in range(len(self.boxes)):
 			cls_idx = T.arange(self.num_classes) + 5 + i * (5 + self.num_classes)
-			output = T.set_subtensor(output[:,:,cls_idx], softmax(output[:,:,cls_idx], axis=2))
-
-		return output
+			feature_map = T.set_subtensor(feature_map[:,cls_idx], feature_map[:,cls_idx]) ##softmax(feature_map[:,cls_idx], axis=1))
+		
+		return feature_map
 	
 	def get_params(self):
 		return layers.get_all_params(self.network['detection'])
@@ -175,8 +176,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			constants = []
 			cost =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
 			cost_test =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
-			# cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
-			# cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
+			#cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
+			#cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 			
@@ -188,8 +189,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			ti = time.time()
 			self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
 			self._test_fn = theano.function([self.input, self.target], cost_test)
-			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost, updates=updates)
-			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._thresh], cost_test)
+			#self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
+			#self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 
