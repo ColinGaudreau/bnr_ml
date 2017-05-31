@@ -512,11 +512,15 @@ class PyCUDAYolo2Cost(theano.Op):
 
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
+			pdb.set_trace()
 			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
 			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
 			foo = np.zeros(1, dtype=np.float32)
 			tmp.get(foo)
 			z[0] = foo[0]
+
+			# free all memory
+			x_ptr.free(); truth_ptr.free(); cost_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
 
 		return thunk
 
@@ -566,6 +570,9 @@ class PyCUDAYolo2CostGrad(theano.Op):
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+
+			# free all memory
+			x_ptr.free(); truth_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
 
 		return thunk
 
