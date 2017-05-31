@@ -291,8 +291,10 @@ yolo_code = """
 			{
 				idx_pred = asg_to_ind4(make_asg4(N, i+5+anchor*(5+info->n_classes),s1,s2), cost->shp);
 				idx_truth = asg_to_ind3(make_asg3(N, match_idx, 4+i), truth->shp);
+				printf("%.2f ", predictions->data[idx_pred]);
 				cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
 			}
+			printf("\\n");
 		}
 	}
 	
@@ -512,7 +514,6 @@ class PyCUDAYolo2Cost(theano.Op):
 
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
-			pdb.set_trace()
 			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
 			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
 			foo = np.zeros(1, dtype=np.float32)
