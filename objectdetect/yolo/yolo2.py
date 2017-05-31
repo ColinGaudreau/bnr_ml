@@ -115,7 +115,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		return feature_map
 		for i in range(len(self.boxes)):
 			cls_idx = T.arange(self.num_classes) + 5 + i * (5 + self.num_classes)
-			feature_map = T.set_subtensor(feature_map[:,cls_idx], feature_map[:,cls_idx]) ##softmax(feature_map[:,cls_idx], axis=1))
+			feature_map = T.set_subtensor(feature_map[:,cls_idx], softmax(feature_map[:,cls_idx], axis=1))
 		
 		return feature_map
 	
