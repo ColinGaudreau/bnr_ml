@@ -291,7 +291,7 @@ yolo_code = """
 			{
 				idx_pred = asg_to_ind4(make_asg4(N, i+5+anchor*(5+info->n_classes),s1,s2), cost->shp);
 				idx_truth = asg_to_ind3(make_asg3(N, match_idx, 4+i), truth->shp);
-				cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
+				//cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
 			}
 		}
 	}
