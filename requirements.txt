@@ -39,7 +39,6 @@ py==1.4.33
 pyasn1==0.2.3
 pycparser==2.17
 Pygments==2.2.0
-pygpu==0.6.5
 pyparsing==2.2.0
 pytest==3.1.0
 python-dateutil==2.6.0
