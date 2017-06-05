@@ -112,7 +112,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		obj_idx = T.arange(4, feature_map.shape[1], 5+self.num_classes)
 		feature_map = T.set_subtensor(feature_map[:,obj_idx], T.nnet.sigmoid(feature_map[:,obj_idx]))
 		
-		return feature_map
 		for i in range(len(self.boxes)):
 			cls_idx = T.arange(self.num_classes) + 5 + i * (5 + self.num_classes)
 			feature_map = T.set_subtensor(feature_map[:,cls_idx], softmax(feature_map[:,cls_idx], axis=1))
@@ -200,7 +199,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			pdb.set_trace()
 			err = self._train_fn(Xbatch, ybatch)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)

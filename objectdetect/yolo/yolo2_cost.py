@@ -292,10 +292,8 @@ yolo_code = """
 			{
 				idx_pred = asg_to_ind4(make_asg4(N, i+5+anchor*(5+info->n_classes),s1,s2), cost->shp);
 				idx_truth = asg_to_ind3(make_asg3(N, match_idx, 4+i), truth->shp);
-				printf("%.2f ", predictions->data[idx_pred]);
-				//cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
+				cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
 			}
-			printf("\\n");
 		}
 	}
 	
@@ -578,7 +576,7 @@ class PyCUDAYolo2CostGrad(theano.Op):
 			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
 
 			# free all memory
-			x_ptr.free(); truth_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
+			x_ptr.free(); truth_ptr.free(); z_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
 
 		return thunk
 
