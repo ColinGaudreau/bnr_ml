@@ -2,7 +2,7 @@ import theano
 # import theano.sandbox.cuda as tcuda
 import theano.misc.pycuda_init
 import theano.tensor as T
-import pygpu.gpuarray as pygpu
+import theano.gpuarray as pygpu
 
 from lasagne.layers import Layer
 
@@ -471,11 +471,9 @@ class PyCUDAYolo2Cost(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
-		x = pygpu.ascontiguousarray(x, context=pygpu.get_default_context())
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
-		truth = pygpu.ascontiguousarray(truth, context=pygpu.get_default_context())
 		# truth = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(truth)
 		# )
@@ -537,11 +535,9 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
-		x = pygpu.ascontiguousarray(x, context=pygpu.get_default_context())
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
-		truth = pygpu.ascontiguousarray(truth, context=pygpu.get_default_context())
 		# truth = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(truth)
 		# )
