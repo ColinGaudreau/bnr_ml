@@ -20,7 +20,7 @@ from lasagne.updates import momentum as momentum_update
 
 from itertools import tee
 
-from ml_logger.learning_objects import BaseLearningObject, BaseLearningSettings
+from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 import cv2
 

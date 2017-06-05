@@ -2,7 +2,7 @@ import theano
 # import theano.sandbox.cuda as tcuda
 import theano.misc.pycuda_init
 import theano.tensor as T
-import theano.gpuarray as pygpu
+import pygpu.gpuarray as pygpu
 
 from lasagne.layers import Layer
 
@@ -471,6 +471,9 @@ class PyCUDAYolo2Cost(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
+		context_name = theano.gpuarray.basic_ops.infer_context_name(x, truth)
+		x = theano.gpuarray.basic_ops.as_gpuarray_variable(x, context_name)
+                truth = theano.gpuarray.basic_ops.as_gpuarray_variable(truth, context_name)
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
@@ -535,6 +538,9 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
+		context_name = theano.gpuarray.basic_ops.infer_context_name(x, truth)
+		x = theano.gpuarray.basic_ops.as_gpuarray_variable(x, context_name)
+		truth = theano.gpuarray.basic_ops.as_gpuarray_variable(truth, context_name)
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
@@ -556,10 +562,13 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		
 		def thunk():
 			x, truth = inputs[0], inputs[1]
+			context = None
+			if hasattr(x[0], 'context'):
+				context = x[0].context
 			z = outputs[0]
 			z_shape = x[0].shape
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = pygpu.zeros(z_shape)
+				z[0] = pygpu.zeros(z_shape, context=context)
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
 			z_ptr, _ = get_tens_ptr(z[0])
