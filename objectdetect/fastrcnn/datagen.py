@@ -114,7 +114,7 @@ def generate_data_from_datastore(
 	y = np.zeros((n_total * batch_size, 4 + n_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
-		im = format_image(loc + imread(annotations[i]['image']), dtype=theano.config.floatX)
+		im = format_image(imread(loc + annotations[i]['image']), dtype=theano.config.floatX)
 		im = resize(im, input_shape)
 
 		annotation, imsize = annotations[i]['annotations'], annotations[i]['size']
