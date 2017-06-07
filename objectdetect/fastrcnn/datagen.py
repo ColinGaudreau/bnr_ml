@@ -90,7 +90,8 @@ def generate_data_from_datastore(
 		n_neg=9,
 		n_pos=3,
 		batch_size=2,
-		n_box=20
+		n_box=20,
+		loc=''
 	):
 	'''
 	Uses stored proposals for a given annotation set
@@ -113,7 +114,7 @@ def generate_data_from_datastore(
 	y = np.zeros((n_total * batch_size, 4 + n_classes + 1), dtype=theano.config.floatX)
 
 	for i in range(annotations.size):
-		im = format_image(imread(annotations[i]['image']), dtype=theano.config.floatX)
+		im = format_image(loc + imread(annotations[i]['image']), dtype=theano.config.floatX)
 		im = resize(im, input_shape)
 
 		annotation, imsize = annotations[i]['annotations'], annotations[i]['size']
@@ -209,12 +210,16 @@ def find_valid_boxes(boxes, proposals):
 	
 	overlap = isec / boxes[:,:,2:].prod(axis=2)
 	
+	# neg_idx = np.bitwise_and(
+	# 	np.bitwise_and(
+	# 		iou > 0.1, 
+	# 		iou < 0.5
+	# 	),
+	# 	overlap < 1.
+	# )
 	neg_idx = np.bitwise_and(
-		np.bitwise_and(
-			iou > 0.1, 
-			iou < 0.5
-		),
-		overlap < 1.
+		iou > 0.1,
+		iou < 0.5
 	)
 	
 	pos_idx = iou > 0.5
