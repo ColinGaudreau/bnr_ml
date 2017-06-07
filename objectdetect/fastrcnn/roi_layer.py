@@ -11,7 +11,7 @@ import numpy.random as npr
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
-roi_mod = SourceModule("""
+roi_code = """
 	#include <stdio.h>
 	
 	struct asg3 {
@@ -152,7 +152,7 @@ roi_mod = SourceModule("""
 			}
 		}
 	}
-""")
+"""
 
 class Tensor3Struct:
 	mem_size = 8 * 3 + np.intp(0).nbytes
@@ -240,6 +240,7 @@ class PyCUDAROIPool(theano.Op):
 	
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
 #		 mod = SourceModule(roi_code)
+		roi_mod = SourceModule(roi_code)
 		pycuda_func = roi_mod.get_function("roi_pool")
 		inputs = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
@@ -288,6 +289,7 @@ class PyCUDAROIPoolGrad(theano.Op):
 	
 	def make_thunk(self, node, storage_map, _, _2, impl=None):
 #		 mod = SourceModule("roi")
+		roi_mod = SourceModule(roi_code)
 		pycuda_func = roi_mod.get_function("roi_pool_grad")
 		inputs = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
