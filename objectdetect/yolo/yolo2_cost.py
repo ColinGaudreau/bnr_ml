@@ -2,6 +2,7 @@ import theano
 # import theano.sandbox.cuda as tcuda
 import theano.misc.pycuda_init
 import theano.tensor as T
+import theano.gpuarray.basic_ops as basic_ops
 import pygpu.gpuarray as pygpu
 
 from lasagne.layers import Layer
@@ -186,6 +187,7 @@ yolo_code = """
 							}
 							if(!found)
 							{
+								printf("%.2f %.2f %.2f %.2f\\n", pred_box[0], pred_box[1], pred_box[2], pred_box[3]);
 								best_iou = new_iou; best_idx = new_idx;
 							}
 						}
@@ -329,9 +331,9 @@ yolo_code = """
 		{
 			val = val + (0.5 + s2) / predictions->shp.dim4;
 			truth_val = truth->data[asg_to_ind3(make_asg3(N, match_idx, 0), truth->shp)] + truth->data[asg_to_ind3(make_asg3(N, match_idx, 2), truth->shp)]/2;
-			grad->data[idx_pred] = mult_fact*info->l_obj * grad_fn(val - truth_val);
+			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - truth_val);
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor
+			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor;
 		}
 		
 		// grad for y coordinate
@@ -471,9 +473,9 @@ class PyCUDAYolo2Cost(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
-		context_name = theano.gpuarray.basic_ops.infer_context_name(x, truth)
-		x = theano.gpuarray.basic_ops.as_gpuarray_variable(x, context_name)
-                truth = theano.gpuarray.basic_ops.as_gpuarray_variable(truth, context_name)
+		context_name = basic_ops.infer_context_name(x, truth)
+                x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
+                truth = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(truth, context_name))
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
@@ -538,9 +540,9 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
-		context_name = theano.gpuarray.basic_ops.infer_context_name(x, truth)
-		x = theano.gpuarray.basic_ops.as_gpuarray_variable(x, context_name)
-		truth = theano.gpuarray.basic_ops.as_gpuarray_variable(truth, context_name)
+		context_name = basic_ops.infer_context_name(x, truth)
+		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
+		truth = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(truth, context_name))
 		# x = tcuda.basic_ops.gpu_contiguous(
 		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
 		# )
@@ -571,15 +573,13 @@ class PyCUDAYolo2CostGrad(theano.Op):
 				z[0] = pygpu.zeros(z_shape, context=context)
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
-			z_ptr, _ = get_tens_ptr(z[0])
+			z_ptr, z_obj = get_tens_ptr(z[0])
 			best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
 			best_iou_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
 			yolo_ptr, _ = get_yolo_info(n_classes, n_anchors, l_obj, l_noobj, anchors)
-
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
-
 			# free all memory
 			x_ptr.free(); truth_ptr.free(); z_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
 
