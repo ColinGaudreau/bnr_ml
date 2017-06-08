@@ -103,7 +103,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		return
 
-	def _format_output(self, feature_map):
+	def _format_output(self, output):
 		# for old cost, gonna not do that cus I am meaaaaaan
 		output = T.reshape(output, (-1,self.boxes.__len__(),5+self.num_classes) + self.output_shape)
 		output = T.set_subtensor(output[:,:,4], T.nnet.sigmoid(output[:,:,4]))
@@ -215,7 +215,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 
 
-	def detect2(self, im, thresh=0.75, overlap=0.5, num_to_label=None):
+	def detect(self, im, thresh=0.75, overlap=0.5, num_to_label=None):
 		im = format_image(im, dtype=theano.config.floatX)
 
 		old_size = im.shape[:2]
@@ -632,8 +632,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		else:
 			lambda_obj, lambda_noobj = self._lambda_obj, self._lambda_noobj
 			
-		# lambda_obj, lambda_noobj = 1., 1.
-		
+		lambda_obj, lambda_noobj = 1., 0.5
+
 		w_cell, h_cell = 1./self.output_shape[1], 1./self.output_shape[0]
 		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
 		y, x = meshgrid(x, y)
@@ -649,7 +649,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		gt_coord = (truth[:,:,:2] + truth[:,:,2:4]/2).dimshuffle(0,1,2,'x','x')
 		
 		gt_dist = T.sum((gt_coord - cell_coord)**2, axis=2).reshape((truth.shape[0],truth.shape[1],-1))
-
+		
 		cell_idx = argmin_unique(gt_dist, 1, 2).reshape((-1,)) # assign unique cell to each obj per example
 		row_idx = T.cast(cell_idx // self.output_shape[1], 'int64')
 		col_idx = cell_idx - row_idx * self.output_shape[1]
@@ -673,8 +673,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		pred_shift = pred_matched
 		pred_shift = T.set_subtensor(pred_shift[:,:,2], w_acr * T.exp(pred_shift[:,:,2]))
 		pred_shift = T.set_subtensor(pred_shift[:,:,3], h_acr * T.exp(pred_shift[:,:,3]))
-		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] + x - pred_shift[:,:,2]/2)
-		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] + y - pred_shift[:,:,3]/2)
+		pred_shift = T.set_subtensor(pred_shift[:,:,0], pred_shift[:,:,0] + T.repeat(x, pred_shift.shape[1], axis=1) - pred_shift[:,:,2]/2)
+		pred_shift = T.set_subtensor(pred_shift[:,:,1], pred_shift[:,:,1] + T.repeat(y, pred_shift.shape[1], axis=1) - pred_shift[:,:,3]/2)
 		
 		# calculate iou
 		xi = T.maximum(pred_shift[:,:,0], truth_flat[:,:,0])
@@ -705,8 +705,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# reformat truth
 		truth_formatted = truth_flat
 		truth_formatted = T.repeat(truth_formatted, self.boxes.__len__(), axis=1)
-		truth_formatted = T.set_subtensor(truth_formatted[:,:,0], truth_formatted[:,:,0] + truth_formatted[:,:,2]/2 - x)
-		truth_formatted = T.set_subtensor(truth_formatted[:,:,1], truth_formatted[:,:,1] + truth_formatted[:,:,3]/2 - y)
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,0], truth_formatted[:,:,0] + truth_formatted[:,:,2]/2 - T.repeat(x, truth_formatted.shape[1], axis=1))
+		truth_formatted = T.set_subtensor(truth_formatted[:,:,1], truth_formatted[:,:,1] + truth_formatted[:,:,3]/2 - T.repeat(y, truth_formatted.shape[1], axis=1))
 		truth_formatted = T.set_subtensor(truth_formatted[:,:,2], T.log(truth_formatted[:,:,2] / w_acr))
 		truth_formatted = T.set_subtensor(truth_formatted[:,:,3], T.log(truth_formatted[:,:,3] / h_acr))
 		truth_formatted = truth_formatted[T.arange(truth_formatted.shape[0]),acr_idx,:]
@@ -722,11 +722,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# penalize all ious and try to make boxes close to anchors
 		cost += lambda_noobj * T.mean(output[:,:,4]**2)
-		cost += lambda_noobj * T.mean(T.sum((output[:,:,:4] - anchors)**2, axis=2))
+		cost += lambda_noobj * T.mean(T.sum(output[:,:,:4]**2, axis=2))
 		
 		# undo penatly for matched boxes
 		cost -= lambda_noobj * T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size
-		cost -= lambda_noobj * T.sum(T.sum((pred_matched[item_idx,acr_idx,:4] - anchors[num_idx,acr_idx,:4,row_idx,col_idx])**2, axis=1)) / output[:,:,0].size
+		cost -= lambda_noobj * T.sum(T.sum(pred_matched[item_idx,acr_idx,:4]**2, axis=1)) / output[:,:,0].size
 
 		# coordinate penalty
 		cost += lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))

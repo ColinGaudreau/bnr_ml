@@ -1,6 +1,6 @@
 import theano
 # import theano.sandbox.cuda as tcuda
-import theano.misc.pycuda_init
+# import theano.misc.pycuda_init
 import theano.tensor as T
 import theano.gpuarray.basic_ops as basic_ops
 import pygpu.gpuarray as pygpu

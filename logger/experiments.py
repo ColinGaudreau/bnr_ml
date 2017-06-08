@@ -147,6 +147,7 @@ class BaseExperiment(object):
 		if experiment_id != None:
 			experiment = self._session.query(db.Experiment).filter(db.Experiment.id == experiment_id).first()
 		weights = db.load_weights(experiment, self.db_settings, weights_in_db=True)
+		self.experiment = experiment
 		if weights is not None:
 			self.learning_object.load_model(weights)
 
