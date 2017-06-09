@@ -636,7 +636,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		else:
 			lambda_obj, lambda_noobj, lambda_anchor = self._lambda_obj, self._lambda_noobj, self._lambda_anchor
 			
-		# lambda_obj, lambda_noobj, lambda_anchor = 1., 2., 0.05
+		# lambda_obj, lambda_noobj, lambda_anchor = 1., 5., 0.1
 
 		w_cell, h_cell = 1./self.output_shape[1], 1./self.output_shape[0]
 		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
@@ -741,5 +741,5 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# coordinate penatly
 		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
-
+		
 		return cost, [iou]
