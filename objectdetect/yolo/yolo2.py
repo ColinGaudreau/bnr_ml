@@ -41,6 +41,7 @@ class Yolo2Settings(BaseLearningSettings):
 			update_args={'learning_rate': 1e-5},
 			lambda_obj=5.,
 			lambda_noobj=0.5,
+			lambda_anchor=.1,
 			thresh=0.8,
 			rescore=True,
 			hyperparameters={}
@@ -62,6 +63,7 @@ class Yolo2Settings(BaseLearningSettings):
 		self.update_args = update_args
 		self.lambda_obj = lambda_obj
 		self.lambda_noobj = lambda_noobj
+		self.lambda_anchor = lambda_anchor
 		self.thresh = thresh
 		self.rescore = rescore
 		self.hyperparameters = {}
@@ -72,6 +74,7 @@ class Yolo2Settings(BaseLearningSettings):
 		serialization['update_args'] = self.update_args
 		serialization['lambda_obj'] = self.lambda_obj
 		serialization['lambda_noobj'] = self.lambda_noobj
+		serialization['lambda_anchor'] = self.lambda_anchor
 		serialization['thresh'] = self.thresh
 		serialization['rescore'] = self.rescore  
 		serialization.update(self.hyperparameters)
@@ -163,6 +166,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		update_args = self.settings.update_args
 		lambda_obj = self.settings.lambda_obj
 		lambda_noobj = self.settings.lambda_noobj
+		lambda_anchor = self.settings.lambda_anchor
 		thresh = self.settings.thresh
 		rescore = self.settings.rescore
 		
@@ -188,8 +192,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			ti = time.time()
 			# self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
 			# self._test_fn = theano.function([self.input, self.target], cost_test)
-			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost, updates=updates)
-			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj], cost_test)
+			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._lambda_anchor], cost, updates=updates)
+			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._lambda_anchor], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
 
@@ -199,12 +203,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		test_loss_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj)
+			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj))
+			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor))
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
@@ -627,12 +631,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			rescore=True
 		):
 		if not hasattr(self, '_lambda_obj'):
-			lambda_obj, lambda_noobj = T.scalar('lambda_obj'), T.scalar('lambda_noobj')
-			self._lambda_obj, self._lambda_noobj = lambda_obj, lambda_noobj
+			lambda_obj, lambda_noobj, lambda_anchor = T.scalar('lambda_obj'), T.scalar('lambda_noobj'), T.scalar('lambda_anchor')
+			self._lambda_obj, self._lambda_noobj, self._lambda_anchor = lambda_obj, lambda_noobj, lambda_anchor
 		else:
-			lambda_obj, lambda_noobj = self._lambda_obj, self._lambda_noobj
+			lambda_obj, lambda_noobj, lambda_anchor = self._lambda_obj, self._lambda_noobj, self._lambda_anchor
 			
-		lambda_obj, lambda_noobj = 1., 0.5
+		# lambda_obj, lambda_noobj, lambda_anchor = 1., 2., 0.05
 
 		w_cell, h_cell = 1./self.output_shape[1], 1./self.output_shape[0]
 		x, y = T.arange(w_cell/2, 1., w_cell), T.arange(h_cell/2, 1., h_cell)
@@ -653,7 +657,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		cell_idx = argmin_unique(gt_dist, 1, 2).reshape((-1,)) # assign unique cell to each obj per example
 		row_idx = T.cast(cell_idx // self.output_shape[1], 'int64')
 		col_idx = cell_idx - row_idx * self.output_shape[1]
-		
 		num_idx = T.repeat(T.arange(truth.shape[0]).reshape((-1,1)), truth.shape[1], axis=1).reshape((-1,))
 		obj_idx = T.repeat(T.arange(truth.shape[1]).reshape((1,-1)), truth.shape[0], axis=0).reshape((-1,))
 		
@@ -722,11 +725,11 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# penalize all ious and try to make boxes close to anchors
 		cost += lambda_noobj * T.mean(output[:,:,4]**2)
-		cost += lambda_noobj * T.mean(T.sum(output[:,:,:4]**2, axis=2))
+		cost += lambda_anchor * T.mean(T.sum(output[:,:,:4]**2, axis=2))
 		
 		# undo penatly for matched boxes
 		cost -= lambda_noobj * T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size
-		cost -= lambda_noobj * T.sum(T.sum(pred_matched[item_idx,acr_idx,:4]**2, axis=1)) / output[:,:,0].size
+		cost -= lambda_anchor * T.sum(T.sum(pred_matched[item_idx,acr_idx,:4]**2, axis=1)) / output[:,:,0].size
 
 		# coordinate penalty
 		cost += lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
@@ -738,5 +741,5 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		# coordinate penatly
 		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
-		
+
 		return cost, [iou]
