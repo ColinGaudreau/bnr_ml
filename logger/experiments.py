@@ -73,10 +73,9 @@ class BasicExperiment(object):
 		try:
 			for i in range(self.iteration, self.iteration + iterations):
 				train_ret_args = self.learning_object.train(*args, **kwargs)
-				train_error, test_error, extra_info = train_ret_args[0], train_ret_args[1], []
+				train_error, test_error, extra_info = train_ret_args[0], train_ret_args[1], {}
 				if len(train_ret_args) > 2:
-					extra_info = train_ret_args[2:]
-					pdb.set_trace()
+					extra_info = train_ret_args[2]
 				train_errors.append(train_error); test_errors.append(test_error)
 
 				# if train/test error is nan then quit
