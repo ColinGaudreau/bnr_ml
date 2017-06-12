@@ -203,7 +203,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		train_loss_batch = []
 		test_loss_batch = []
-		extras = []
+		extras = {'rows': [], 'cols': [], 'anchors': []}
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
 			err, ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
