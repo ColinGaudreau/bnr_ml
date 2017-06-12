@@ -206,10 +206,13 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		extras = {'rows': [], 'cols': [], 'anchors': []}
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err, ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
+			ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
 			err = ret_args[0]
 			train_loss_batch.append(err)
-			extras.extend(ret_args[1:])
+			extra = []
+			for e in ret_args[1:]:
+				extra.extend(e.tolist())
+			extras.append(extra)
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
