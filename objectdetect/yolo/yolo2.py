@@ -179,8 +179,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			constants = []
 			# cost =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
 			# cost_test =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
-			cost, constants = self._get_cost(self.output, self.target, rescore=rescore)
-			cost_test, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
+			cost, constants, extras = self._get_cost(self.output, self.target, rescore=rescore)
+			cost_test, _, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
 			
 			print_obj.println("Creating cost variable took %.4f seconds\n" % (time.time() - ti,))
 			
@@ -192,7 +192,9 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			ti = time.time()
 			# self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
 			# self._test_fn = theano.function([self.input, self.target], cost_test)
-			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._lambda_anchor], cost, updates=updates)
+			output_vars = [cost]
+			output_vars.extend(extras)
+			self._train_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._lambda_anchor], output_vars, updates=updates)
 			self._test_fn = theano.function([self.input, self.target, self._lambda_obj, self._lambda_noobj, self._lambda_anchor], cost_test)
 			
 			print_obj.println('Compiling functions took %.4f seconds\n' % (time.time() - ti,))
@@ -201,10 +203,13 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		train_loss_batch = []
 		test_loss_batch = []
+		extras = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
+			err, ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
+			err = ret_args[0]
 			train_loss_batch.append(err)
+			extras.extend(ret_args[1:])
 			print_obj.println('Batch error: %.4f\n' % err)
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
@@ -215,7 +220,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		
 		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
-		return float(train_loss), float(test_loss)
+		return float(train_loss), float(test_loss), extras
 
 
 
@@ -742,4 +747,4 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		# coordinate penatly
 		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
 		
-		return cost, [iou]
+		return cost, [iou], [row_idx, col_idx, acr_idx]

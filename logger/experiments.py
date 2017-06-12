@@ -6,7 +6,7 @@ import cPickle as pickle
 
 import pdb
 
-class BaseExperiment(object):
+class BasicExperiment(object):
 	def __init__(
 			self,
 			learning_object,
@@ -72,7 +72,10 @@ class BaseExperiment(object):
 
 		try:
 			for i in range(self.iteration, self.iteration + iterations):
-				train_error, test_error = self.learning_object.train(*args, **kwargs)
+				train_ret_args = self.learning_object.train(*args, **kwargs)
+				train_error, test_error, extra_info = train_ret_args[:2], []
+				if len(train_ret_args) > 2:
+					extra_info = train_ret_args[2:]
 				train_errors.append(train_error); test_errors.append(test_error)
 
 				# if train/test error is nan then quit
@@ -82,7 +85,7 @@ class BaseExperiment(object):
 
 				# save error and save weights
 				if self.use_db:
-					new_result = db.TrainingResult(train_error=train_error, test_error=test_error, iteration=i, experiment_id=self.experiment.id)
+					new_result = db.TrainingResult(train_error=train_error, test_error=test_error, iteration=i, extra_info=extra_info, experiment_id=self.experiment.id)
 					self._session.add(new_result)
 					self._session.commit()
 
