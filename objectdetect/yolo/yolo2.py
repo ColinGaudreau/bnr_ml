@@ -204,6 +204,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		train_loss_batch = []
 		test_loss_batch = []
 		extras = {'rows': [], 'cols': [], 'anchors': []}
+		cost_breakdown = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
 			ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
@@ -211,7 +212,16 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			extras['rows'].extend(ret_args[2].tolist())
 			extras['cols'].extend(ret_args[3].tolist())
 			extras['anchors'].extend(ret_args[4].tolist())
+			cost_breakdown.append(reg_args[-5:])
 			print_obj.println('Batch error: %.4f\n' % err)
+
+		# log the breakdown of the cost function
+		cost_breakdown = [float(c) for c in np.mean(np.asarray(cost_breakdown), axis=0)]	
+		extras['cost_noobject'] = cost_breakdown[0]
+		extras['cost_anchor'] = cost_breakdown[1]
+		extras['cost_coord'] = cost_breakdown[2]
+		extras['cost_class'] = cost_breakdown[3]
+		extras['cost_obj'] = cost_breakdown[4]
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
 			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor))
@@ -728,24 +738,17 @@ class Yolo2ObjectDetector(BaseLearningObject):
 		anchors = T.set_subtensor(anchors[:,:,:2], 0.)
 
 		cost = 0.
-		
-		# penalize all ious and try to make boxes close to anchors
-		cost += lambda_noobj * T.mean(output[:,:,4]**2)
-		cost += lambda_anchor * T.mean(T.sum(output[:,:,:4]**2, axis=2))
-		
-		# undo penatly for matched boxes
-		cost -= lambda_noobj * T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size
-		cost -= lambda_anchor * T.sum(T.sum(pred_matched[item_idx,acr_idx,:4]**2, axis=1)) / output[:,:,0].size
 
-		# coordinate penalty
-		cost += lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
-		
+		cost_noobject = lambda_noobj * (T.mean(output[:,:,4]**2) - T.sum(pred_matched[item_idx, acr_idx,4]**2) / output[:,:,4].size)
+		cost_anchor = lambda_anchor * (T.mean(T.sum(output[:,:,:4]**2, axis=2)) - T.sum(T.sum(pred_matched[item_idx,acr_idx,:4]**2, axis=1)) / output[:,:,0].size)
+		cost_coord = lambda_obj * T.mean(T.sum((pred_matched[item_idx,acr_idx,:4] - truth_formatted[:,:4])**2, axis=1))
+		cost_class = lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
+
 		if rescore:
-			cost += lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - iou[item_idx, acr_idx])**2)
+			cost_obj = lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - iou[item_idx, acr_idx])**2)
 		else:
-			cost += lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - 1)**2)
+			cost_obj = lambda_obj * T.mean((pred_matched[item_idx, acr_idx,4] - 1)**2)
 		
-		# coordinate penatly
-		cost += lambda_obj * T.mean(T.sum(-truth_formatted[:,-self.num_classes:] * T.log(pred_matched[item_idx, acr_idx, -self.num_classes:]), axis=1))
-		
-		return cost, [iou], [row_idx, col_idx, acr_idx]
+		cost = cost_noobject + cost_obj + cost_anchor + cost_coord + cost_class
+
+		return cost, [iou], [row_idx, col_idx, acr_idx, cost_noobject, cost_anchor, cost_coord, cost_class, cost_obj]
