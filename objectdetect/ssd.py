@@ -147,7 +147,7 @@ class SingleShotDetector(BaseLearningObject):
 
 			# get cost
 			ti = time.time()
-			cost = self._get_cost(self.input, self.target, alpha=alpha, min_iou=min_iou)
+			cost, extras = self._get_cost(self.input, self.target, alpha=alpha, min_iou=min_iou)
 
 			print_obj.println('Creating cost variable took %.4f seconds' % (time.time() - ti,))
 
@@ -158,7 +158,9 @@ class SingleShotDetector(BaseLearningObject):
 			print_obj.println('Compiling...')
 
 			ti = time.time()
-			self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
+			output_args = [cost]
+			output_args.extend(extras)
+			self._train_fn = theano.function([self.input, self.target], output_args, updates=updates)
 			self._test_fn = theano.function([self.input, self.target], cost)
 
 			print_obj.println('Compiling functions took %.4f seconds' % (time.time() - ti,))
@@ -166,13 +168,21 @@ class SingleShotDetector(BaseLearningObject):
 		print_obj.println('Beginning training...')
 
 		train_loss_batch, test_loss_batch = [], []
+		extras_batch = []
 
 		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, ybatch)
-			if np.isnan(err):
-				pdb.set_trace()
+			ret_args = self._train_fn(Xbatch, ybatch)
+			err = ret_args[0]
+			extras_batch.append(ret_args[1:])
+
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % (err,))
+
+		extras_batch = [float(extra) for extra in np.asarray(extras_batch).mean(axis=0)]
+		extras = {}
+		extras['cost_coord'] = extras_batch[0]
+		extras['cost_class'] = extras_batch[1]
+		extras['cost_noobj'] = extras_batch[2]
 
 		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
 			test_loss_batch.append(self._test_fn(Xbatch, ybatch))
@@ -182,7 +192,7 @@ class SingleShotDetector(BaseLearningObject):
 
 		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
-		return train_loss, test_loss
+		return train_loss, test_loss, extras
 
 	def detect(self, im, thresh=0.75, overlap=0.4, n_apply=1, num_to_label=None):
 		old_size = im.shape[:2]
@@ -309,6 +319,8 @@ class SingleShotDetector(BaseLearningObject):
 		neg_example = theano.shared(np.zeros(self.num_classes + 1, dtype=theano.config.floatX))
 		neg_example = T.set_subtensor(neg_example[-1], 1.)
 		neg_example = neg_example.dimshuffle('x','x',0,'x','x')
+
+		cost_coord, cost_class, cost_noobj = 0., 0., 0.
 		
 		for i in range(self._predictive_maps.__len__()):
 			dmap = self._default_maps[i]
@@ -349,13 +361,14 @@ class SingleShotDetector(BaseLearningObject):
 			# penalize coordinates
 			cost_fmap = 0.
 
-			cost_fmap += (((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])**2).sum()
-			cost_fmap += (((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()])**2).sum()
-			cost_fmap += (((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()])**2).sum()
-			cost_fmap += (((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()])**2).sum()
+			cost_coord_fmap = 0.
+			cost_coord_fmap += (((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])**2).sum()
+			cost_coord_fmap += (((fmap[:,:,1] - (truth_extended[:,:,1] - dmap_extended[:,:,1]) / dmap_extended[:,:,3])[iou_gt_min.nonzero()])**2).sum()
+			cost_coord_fmap += (((fmap[:,:,2] - T.log(truth_extended[:,:,2] / dmap_extended[:,:,2]))[iou_gt_min.nonzero()])**2).sum()
+			cost_coord_fmap += (((fmap[:,:,3] - T.log(truth_extended[:,:,3] / dmap_extended[:,:,3]))[iou_gt_min.nonzero()])**2).sum()
 
-			class_cost = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
-			cost_fmap += (alpha * class_cost[iou_gt_min.nonzero()].sum())
+			cost_class_fmap = -(truth_extended[:,:,-(self.num_classes + 1):] * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2)
+			cost_class_fmap = class_cost[iou_gt_min.nonzero()].sum()
 
 			# find negative examples
 			iou_default = iou_default.reshape((-1,))
@@ -372,14 +385,16 @@ class SingleShotDetector(BaseLearningObject):
 			neg_size, pos_size = T.maximum(1., neg_size), T.maximum(1., pos_size)
 
 			# Add the negative examples to the costs.
-			neg_class_cost = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
+			cost_noobj_fmap = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
 
-			cost_fmap /= pos_size
-			cost_fmap += (alpha * neg_class_cost[iou_idx_sorted].sum() / neg_size)
-			
-			# normalize
-			# cost_fmap /= T.maximum(1., pos_size + neg_size)
-			
+			#
+			# NEW STUFF
+			#
+			cost_coord += cost_coord_fmap / pos_size
+			cost_class += alpha * cost_class_fmap / pos_size
+			cost_noobj += alpha * cost_noobj_fmap / neg_size
 			cost += cost_fmap
 
-		return cost
+		cost = cost_coord + cost_class + cost_noobj
+
+		return cost, [cost_coord, cost_class, cost_noobj]
