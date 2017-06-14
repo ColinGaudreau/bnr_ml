@@ -214,7 +214,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			extras['cols'].extend(ret_args[2].tolist())
 			extras['anchors'].extend(ret_args[3].tolist())
 			cost_breakdown.append(ret_args[-5:])
-			print_obj.println('Batch error: %.4f\n' % err)
+			print_obj.println('Batch error: %.4f' % err)
 
 		# log the breakdown of the cost function
 		cost_breakdown = [float(c) for c in np.mean(np.asarray(cost_breakdown), axis=0)]	

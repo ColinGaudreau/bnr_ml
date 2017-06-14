@@ -1,6 +1,6 @@
 import theano
-import theano.sandbox.cuda as tcuda
-import theano.misc.pycuda_init
+import theano.gpuarray.basic_ops as basic_ops
+import pygpu.gpuarray as pygpu
 import theano.tensor as T
 
 from lasagne.layers import Layer
@@ -158,7 +158,7 @@ class Tensor3Struct:
 	mem_size = 8 * 3 + np.intp(0).nbytes
 	def __init__(self, array, ptr):
 		assert(len(array.shape) == 3) 
-		if isinstance(array, tcuda.CudaNdarray):
+		if isinstance(array, pygpu.GpuArray):
 			self.data = array.gpudata
 		else:
 			if array.dtype != np.float32:
@@ -178,7 +178,7 @@ class Tensor4Struct:
 	mem_size = 8 * 4 + np.intp(0).nbytes
 	def __init__(self, array, ptr):
 		assert(len(array.shape) == 4)
-		if isinstance(array, tcuda.CudaNdarray):
+		if isinstance(array, pygpu.GpuArray):
 			self.data = array.gpudata
 		else:
 			if array.dtype != np.float32:
@@ -214,12 +214,9 @@ class PyCUDAROIPool(theano.Op):
 		self.shape = shape
 	
 	def make_node(self, x, boxes):
-		x = tcuda.basic_ops.gpu_contiguous(
-			tcuda.basic_ops.as_cuda_ndarray_variable(x)
-		)
-		boxes = tcuda.basic_ops.gpu_contiguous(
-			tcuda.basic_ops.as_cuda_ndarray_variable(boxes)
-		)
+		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
+		boxes = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(boxes, context_name))
+
 		return theano.Apply(self, [x,boxes], [x.type()])
 	
 	def infer_shape(self, node, ishapes):
@@ -247,6 +244,9 @@ class PyCUDAROIPool(theano.Op):
 		
 		def thunk():
 			x, boxes = inputs[0], inputs[1]
+			context = None
+			if hasattr(x[0], 'context'):
+				context = x[0].context
 			z = outputs[0]
 			z_shape = (
 				np.prod(boxes[0].shape[:2]),
@@ -255,7 +255,7 @@ class PyCUDAROIPool(theano.Op):
 				self.shape[1]
 			)
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = tcuda.CudaNdarray.zeros(z_shape)
+				z[0] = pygpu.zeros(z_shape, context)
 			x_ptr, _ = get_tens_ptr(x[0])
 			boxes_ptr, _ = get_tens_ptr(boxes[0])
 			z_ptr, z_tens = get_tens_ptr(z[0])
@@ -272,15 +272,11 @@ class PyCUDAROIPoolGrad(theano.Op):
 		self.shape = shape
 	
 	def make_node(self, x, boxes, grad):
-		x = tcuda.basic_ops.gpu_contiguous(
-			tcuda.basic_ops.as_cuda_ndarray_variable(x)
-		)
-		boxes = tcuda.basic_ops.gpu_contiguous(
-			tcuda.basic_ops.as_cuda_ndarray_variable(boxes)
-		)
-		grad = tcuda.basic_ops.gpu_contiguous(
-			tcuda.basic_ops.as_cuda_ndarray_variable(grad)
-		)
+		context_name = basic_ops.infer_context_name(x, boxes)
+		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
+		boxes = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(boxes, context_name))
+		grad = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(grad, context_name))
+
 		return theano.Apply(self, [x,boxes,grad], [x.type()])
 	
 	def infer_shape(self, node, ishapes):
@@ -296,9 +292,12 @@ class PyCUDAROIPoolGrad(theano.Op):
 		
 		def thunk():
 			x, boxes, grad = inputs[0], inputs[1], inputs[2]
+			context = None
+			if hasattr(x[0], 'context'):
+				context = x[0].context
 			z = outputs[0]
 			if z[0] is None or z[0].shape != x[0].shape:
-				z[0] = tcuda.CudaNdarray.zeros(x[0].shape)
+				x[0] = pygpu.zeros(z_shape, context=context)
 			else:
 				z[0][:] = 0
 			x_ptr, _ = get_tens_ptr(x[0])
