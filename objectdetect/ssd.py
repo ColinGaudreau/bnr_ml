@@ -359,7 +359,7 @@ class SingleShotDetector(BaseLearningObject):
 			dmap_extended = dmap.dimshuffle('x',0,1,2,3)
 			
 			# penalize coordinates
-			cost_fmap = 0.
+			# cost_fmap = 0.
 
 			cost_coord_fmap = 0.
 			cost_coord_fmap += (((fmap[:,:,0] - (truth_extended[:,:,0] - dmap_extended[:,:,0]) / dmap_extended[:,:,2])[iou_gt_min.nonzero()])**2).sum()
