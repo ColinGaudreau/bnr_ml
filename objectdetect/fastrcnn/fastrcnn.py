@@ -130,13 +130,15 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		mask = T.ones((target.shape[0], 1))
 		mask = T.switch(T.eq(target[:,-(self.num_classes + 1):].argmax(axis=1), self.num_classes), 0, 1) # mask for non-object ground truth labels
 		
-		cost = T.sum(-target[:,-(self.num_classes + 1):] * T.log(detection_output), axis=1).mean()
+		cost_class = T.sum(-target[:,-(self.num_classes + 1):] * T.log(detection_output), axis=1).mean()
 		
 		# cost = categorical_crossentropy(detection_output, target[:,-(self.num_classes + 1):])
 		if lmbda > 0:
-			cost += lmbda * T.sum(mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)) / mask.nonzero()[0].size
+			cost_coord = lmbda * T.sum(mask * T.sum(smooth_l1(localization_output[T.arange(localization_output.shape[0]), class_idx] - target[:,:4]), axis=1)) / mask.nonzero()[0].size
 		
-		return cost
+		cost = cost_class + cost_coord
+
+		return cost, [cost_class, cost_coord]
 
 	def get_weights(self):
 		return [p.get_value() for p in self.get_params()]
@@ -171,8 +173,8 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		# check if the training/testing functions have been compiled
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			print_obj.println('Getting cost...')
-			cost = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
-			cost_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
+			cost, extras = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
+			cost_test, _ = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 			
 			if lmbda == 0:
 				params = self.get_params()[:-2]
@@ -181,7 +183,9 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			updates = update_fn(cost, params, **update_args)
 
 			ti = time.time();
-			self._train_fn = theano.function([self.input, self.boxes, target], cost, updates=updates)
+			output_args = [cost]
+			output_args.extend(extras)
+			self._train_fn = theano.function([self.input, self.boxes, target], output_args, updates=updates)
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
 			ti = time.time();
 			self._test_fn = theano.function([self.input, self.boxes, target], cost_test)
@@ -191,12 +195,20 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 
 		train_loss_batch = []
 		test_loss_batch = []
+		extras_batch = []
+		extras = {}
 		
 		ti = time.time()
 		for Xbatch, boxes_batch, ybatch in data_generator(train_annotations, **train_args):
-			err = self._train_fn(Xbatch, boxes_batch, ybatch)
+			ret_args = self._train_fn(Xbatch, boxes_batch, ybatch)
+			err = ret_args[0]
+			extras_batch.append(ret_args[1:])
 			train_loss_batch.append(err)
 			print_obj.println('Batch error: %.4f' % err)
+
+		extras_batch = [float(e) for e in np.mean(np.asarray(extras_batch), axis=0)]
+		extras['cost_class'] = extras_batch[0]
+		extras['cost_coord'] = extras_batch[1]
 		
 		for Xbatch, boxes_batch, ybatch in data_generator(test_annotations, **test_args):
 			test_loss_batch.append(self._test_fn(Xbatch, boxes_batch, ybatch))
@@ -209,7 +221,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		print_obj.println('Epoch took %.3f seconds.' % (time.time() - ti,))
 		time.sleep(.01)
 		
-		return float(train_loss), float(test_loss)
+		return float(train_loss), float(test_loss), extras
 
 	def _propose_regions(self, im, kvals, min_size):
 		regions = []
