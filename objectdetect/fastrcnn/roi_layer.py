@@ -2,14 +2,16 @@ import theano
 import theano.gpuarray.basic_ops as basic_ops
 import pygpu.gpuarray as pygpu
 import theano.tensor as T
-
 from lasagne.layers import Layer
 
 import numpy as np
 import numpy.random as npr
 
 import pycuda.driver as cuda
+import pycuda.autoinit
 from pycuda.compiler import SourceModule
+
+import pdb
 
 roi_code = """
 	#include <stdio.h>
@@ -214,8 +216,8 @@ class PyCUDAROIPool(theano.Op):
 		self.shape = shape
 	
 	def make_node(self, x, boxes):
-		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
-		boxes = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(boxes, context_name))
+		x = basic_ops.gpu_contiguous(x)
+		boxes = basic_ops.gpu_contiguous(boxes)
 
 		return theano.Apply(self, [x,boxes], [x.type()])
 	
@@ -255,7 +257,7 @@ class PyCUDAROIPool(theano.Op):
 				self.shape[1]
 			)
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = pygpu.zeros(z_shape, context)
+				z[0] = pygpu.zeros(z_shape, dtype=theano.config.floatX, context=context)
 			x_ptr, _ = get_tens_ptr(x[0])
 			boxes_ptr, _ = get_tens_ptr(boxes[0])
 			z_ptr, z_tens = get_tens_ptr(z[0])
@@ -272,10 +274,9 @@ class PyCUDAROIPoolGrad(theano.Op):
 		self.shape = shape
 	
 	def make_node(self, x, boxes, grad):
-		context_name = basic_ops.infer_context_name(x, boxes)
-		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
-		boxes = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(boxes, context_name))
-		grad = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(grad, context_name))
+		x = basic_ops.gpu_contiguous(x)
+		boxes = basic_ops.gpu_contiguous(boxes)
+		grad = basic_ops.gpu_contiguous(grad)
 
 		return theano.Apply(self, [x,boxes,grad], [x.type()])
 	
@@ -297,7 +298,7 @@ class PyCUDAROIPoolGrad(theano.Op):
 				context = x[0].context
 			z = outputs[0]
 			if z[0] is None or z[0].shape != x[0].shape:
-				x[0] = pygpu.zeros(z_shape, context=context)
+				z[0] = pygpu.zeros(x[0].shape, dtype=theano.config.floatX, context=context)
 			else:
 				z[0][:] = 0
 			x_ptr, _ = get_tens_ptr(x[0])
