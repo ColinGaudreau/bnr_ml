@@ -129,6 +129,11 @@ def generate_data_from_datastore(
 		if cnt == batch_size or (i-1) == annotations.size:
 			X, boxes, y = X[:cnt], boxes[:cnt], y[:cnt*n_total]
 			if X.shape[0] > 0:
+				for j in range(X.shape[0]):
+					shuffle_idx = np.arange(boxes.shape[1])
+					npr.shuffle(shuffle_idx)
+					boxes[j,:] = boxes[j,shuffle_idx]
+					y[j * boxes.shape[1]:(j+1) * boxes.shape[1]] = y[j * boxes.shape[1] + shuffle_idx]
 				yield X, boxes, y
 			X = np.zeros((batch_size, 3) + input_shape, dtype=theano.config.floatX)
 			boxes = np.zeros((batch_size, n_total, 4), dtype=theano.config.floatX)
