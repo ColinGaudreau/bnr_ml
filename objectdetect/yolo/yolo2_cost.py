@@ -474,14 +474,8 @@ class PyCUDAYolo2Cost(theano.Op):
 	
 	def make_node(self, x, truth):
 		context_name = basic_ops.infer_context_name(x, truth)
-                x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
-                truth = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(truth, context_name))
-		# x = tcuda.basic_ops.gpu_contiguous(
-		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
-		# )
-		# truth = tcuda.basic_ops.gpu_contiguous(
-		# 	tcuda.basic_ops.as_cuda_ndarray_variable(truth)
-		# )
+        x = basic_ops.gpu_contiguous(x)
+        truth = basic_ops.gpu_contiguous(truth)
 		return theano.Apply(self, [x,truth], [T.scalar()])
 	
 	def infer_shape(self, node, ishapes):
@@ -540,15 +534,8 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		self.anchors = anchors
 	
 	def make_node(self, x, truth):
-		context_name = basic_ops.infer_context_name(x, truth)
-		x = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(x, context_name))
-		truth = basic_ops.gpu_contiguous(basic_ops.as_gpuarray_variable(truth, context_name))
-		# x = tcuda.basic_ops.gpu_contiguous(
-		# 	tcuda.basic_ops.as_cuda_ndarray_variable(x)
-		# )
-		# truth = tcuda.basic_ops.gpu_contiguous(
-		# 	tcuda.basic_ops.as_cuda_ndarray_variable(truth)
-		# )
+		x = basic_ops.gpu_contiguous(x)
+		truth = basic_ops.gpu_contiguous(truth)
 		return theano.Apply(self, [x,truth], [x.type()])
 	
 	def infer_shape(self, node, ishapes):
@@ -570,7 +557,7 @@ class PyCUDAYolo2CostGrad(theano.Op):
 			z = outputs[0]
 			z_shape = x[0].shape
 			if z[0] is None or z[0].shape != z_shape:
-				z[0] = pygpu.zeros(z_shape, context=context)
+				z[0] = pygpu.zeros(z_shape, dtype=theano.config.floatX, context=context)
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
 			z_ptr, z_obj = get_tens_ptr(z[0])
