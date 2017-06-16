@@ -25,7 +25,7 @@ def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, easy=.2,
 		boxes = format_boxes(annotation)
 		proposals = generate_proposal_boxes(boxes, imsize, n_box=n_box)
 		neg_idx_easy, neg_idx_hard, pos_idx, obj_idx = find_valid_boxes(boxes, proposals, ret_easy=True)
-		print('Generated {} negative regions, and {} positive regions. {} objects in image.'.format(neg_idx.size, pos_idx.size, annotation.__len__()))
+		print('Generated {} hard negative regions, {} easy negative regions, and {} positive regions. {} objects in image.'.format(neg_idx_hard.size, neg_idx_easy.size, pos_idx.size, annotation.__len__()))
 		n_easy = int(n_neg * easy)
 		n_hard = n_neg - n_easy
 		if neg_idx_hard.size < n_hard:
