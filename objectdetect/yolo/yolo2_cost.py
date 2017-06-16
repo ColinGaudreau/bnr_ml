@@ -210,19 +210,21 @@ yolo_code = """
 		}
 	}
 	
-	__global__ void yolo_v2_cost(tens4 *cost, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info)
+	__global__ void yolo_v2_cost(tens4 *cost, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info, int n_matches, int n_total)
 	{
 		// define cost function
 		float (*cost_fn)(float);
 		cost_fn = &l2_cost_fn;
 		
 		int N, s1, s2, anchor, idx_pred, idx_truth, match_idx, i;
-		float val, truth_val, mult_fact;
+		float val, truth_val, div_matched, div_unmatched;
 		asg4 asg;
 		bool chosen = false;
 		N = blockIdx.x; s1 = blockIdx.y; s2 = blockIdx.z;
 		anchor = threadIdx.x;
-		mult_fact = 1. / predictions->shp.dim1; // takes the mean
+
+		div_matched = 1. / (n_matched); // mean of matched objects
+		div_unmatched = 1. / (n_total - n_matched)
 		
 		// check if box was matched
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
@@ -242,9 +244,9 @@ yolo_code = """
 		{
 			val = val + (0.5 + s2) / predictions->shp.dim4;
 			truth_val = truth->data[asg_to_ind3(make_asg3(N, match_idx, 0), truth->shp)] + truth->data[asg_to_ind3(make_asg3(N, match_idx, 2), truth->shp)]/2;
-			cost->data[idx_pred] = mult_fact * info->l_obj * cost_fn(val - truth_val);
+			cost->data[idx_pred] = div_matched * info->l_obj * cost_fn(val - truth_val);
 		} else {
-			cost->data[idx_pred] = mult_fact * info->l_noobj * cost_fn(val); // regress to anchor
+			cost->data[idx_pred] = div_unmatched * info->l_noobj * cost_fn(val); // regress to anchor
 		}
 		
 		// cost for y coordinate
@@ -254,9 +256,9 @@ yolo_code = """
 		{
 			val = val + (0.5 + s1) / predictions->shp.dim3;
 			truth_val = truth->data[asg_to_ind3(make_asg3(N, match_idx, 1), truth->shp)] + truth->data[asg_to_ind3(make_asg3(N, match_idx, 3), truth->shp)]/2;
-			cost->data[idx_pred] = mult_fact * info->l_obj * cost_fn(val - truth_val);
+			cost->data[idx_pred] = div_matched * info->l_obj * cost_fn(val - truth_val);
 		} else {
-			cost->data[idx_pred] = mult_fact * info->l_noobj * cost_fn(val); // regress to anchor
+			cost->data[idx_pred] = div_unmatched * info->l_noobj * cost_fn(val); // regress to anchor
 		}
 		
 		// cost for w
@@ -265,9 +267,9 @@ yolo_code = """
 		if(chosen)
 		{
 			idx_truth = asg_to_ind3(make_asg3(N, match_idx, 2), truth->shp);
-			cost->data[idx_pred] = mult_fact * info->l_obj * cost_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor]));
+			cost->data[idx_pred] = div_matched * info->l_obj * cost_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor]));
 		} else {
-			cost->data[idx_pred] = mult_fact * info->l_noobj * cost_fn(val); // regress to anchor
+			cost->data[idx_pred] = div_unmatched * info->l_noobj * cost_fn(val); // regress to anchor
 		}
 		
 		// cost for h
@@ -276,9 +278,9 @@ yolo_code = """
 		if(chosen)
 		{
 			idx_truth = asg_to_ind3(make_asg3(N, match_idx, 3), truth->shp);
-			cost->data[idx_pred] = mult_fact * info->l_obj * cost_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor+1]));
+			cost->data[idx_pred] = div_matched * info->l_obj * cost_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor+1]));
 		} else {
-			cost->data[idx_pred] = mult_fact * info->l_noobj * cost_fn(val); // regress to anchor
+			cost->data[idx_pred] = div_unmatched * info->l_noobj * cost_fn(val); // regress to anchor
 		}
 		
 		// cost for objectness
@@ -286,9 +288,9 @@ yolo_code = """
 		val = predictions->data[idx_pred];
 		if(chosen)
 		{
-			cost->data[idx_pred] = mult_fact * info->l_obj * cost_fn(val - best_ious[N*truth->shp.dim2+match_idx]);
+			cost->data[idx_pred] = div_matched * info->l_obj * cost_fn(val - best_ious[N*truth->shp.dim2+match_idx]);
 		} else {
-			cost->data[idx_pred] = mult_fact * info->l_noobj * cost_fn(val); // regress to anchor
+			cost->data[idx_pred] = div_unmatched * info->l_noobj * cost_fn(val); // regress to anchor
 		}
 		
 		if(chosen)
@@ -297,24 +299,26 @@ yolo_code = """
 			{
 				idx_pred = asg_to_ind4(make_asg4(N, i+5+anchor*(5+info->n_classes),s1,s2), cost->shp);
 				idx_truth = asg_to_ind3(make_asg3(N, match_idx, 4+i), truth->shp);
-				cost->data[idx_pred] = -mult_fact * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
+				cost->data[idx_pred] = -div_matched * info->l_obj * truth->data[idx_truth] * logf(predictions->data[idx_pred]); // log loss
 			}
 		}
 	}
 	
-	__global__ void yolo_v2_grad(tens4 *grad, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info)
+	__global__ void yolo_v2_grad(tens4 *grad, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info, int n_matched, int n_total)
 	{
 		// define grad function
 		float (*grad_fn)(float);
 		grad_fn = &l2_grad_fn;
 		
 		int N, s1, s2, anchor, idx_pred, idx_truth, match_idx, i;
-		float val, truth_val, mult_fact;
+		float val, truth_val, div_matched, div_unmatched;
 		bool chosen = false;
 		N = blockIdx.x; s1 = blockIdx.y; s2 = blockIdx.z;
 		anchor = threadIdx.x;
 		asg4 asg;
-		mult_fact = 1./predictions->shp.dim1;
+		
+		div_matched = 1. / (n_matched); // mean of matched objects
+		div_unmatched = 1. / (n_total - n_matched)
 		
 		// check if box was matched
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
@@ -334,9 +338,9 @@ yolo_code = """
 		{
 			val = val + (0.5 + s2) / predictions->shp.dim4;
 			truth_val = truth->data[asg_to_ind3(make_asg3(N, match_idx, 0), truth->shp)] + truth->data[asg_to_ind3(make_asg3(N, match_idx, 2), truth->shp)]/2;
-			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - truth_val);
+			grad->data[idx_pred] = div_matched * info->l_obj * grad_fn(val - truth_val);
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor;
+			grad->data[idx_pred] = div_unmatched * info->l_noobj * grad_fn(val); // regress to anchor;
 		}
 		
 		// grad for y coordinate
@@ -346,9 +350,9 @@ yolo_code = """
 		{
 			val = val + (0.5 + s1) / predictions->shp.dim3;
 			truth_val = truth->data[asg_to_ind3(make_asg3(N, match_idx, 1), truth->shp)] + truth->data[asg_to_ind3(make_asg3(N, match_idx, 3), truth->shp)]/2;
-			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - truth_val);
+			grad->data[idx_pred] = div_matched * info->l_obj * grad_fn(val - truth_val);
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor
+			grad->data[idx_pred] = div_unmatched * info->l_noobj * grad_fn(val); // regress to anchor
 		}
 		
 		// grad for w
@@ -357,9 +361,9 @@ yolo_code = """
 		if(chosen)
 		{
 			idx_truth = asg_to_ind3(make_asg3(N, match_idx, 2), truth->shp);
-			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor]));
+			grad->data[idx_pred] = div_matched * info->l_obj * grad_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor]));
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor
+			grad->data[idx_pred] = div_unmatched * info->l_noobj * grad_fn(val); // regress to anchor
 		}
 		
 		// grad for h
@@ -368,9 +372,9 @@ yolo_code = """
 		if(chosen)
 		{
 			idx_truth = asg_to_ind3(make_asg3(N, match_idx, 3), truth->shp);
-			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor+1]));
+			grad->data[idx_pred] = div_matched * info->l_obj * grad_fn(val - logf(truth->data[idx_truth] / info->anchors[2*anchor+1]));
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor
+			grad->data[idx_pred] = div_unmatched * info->l_noobj * grad_fn(val); // regress to anchor
 		}
 		
 		// grad for objectness
@@ -378,9 +382,9 @@ yolo_code = """
 		val = predictions->data[idx_pred];
 		if(chosen)
 		{
-			grad->data[idx_pred] = mult_fact * info->l_obj * grad_fn(val - best_ious[N*truth->shp.dim2+match_idx]);
+			grad->data[idx_pred] = div_matched * info->l_obj * grad_fn(val - best_ious[N*truth->shp.dim2+match_idx]);
 		} else {
-			grad->data[idx_pred] = mult_fact * info->l_noobj * grad_fn(val); // regress to anchor
+			grad->data[idx_pred] = div_unmatched * info->l_noobj * grad_fn(val); // regress to anchor
 		}
 		
 		if(chosen)
@@ -389,7 +393,7 @@ yolo_code = """
 			{
 				idx_pred = asg_to_ind4(make_asg4(N, i+5+anchor*(5+info->n_classes),s1,s2), grad->shp);
 				idx_truth = asg_to_ind3(make_asg3(N, match_idx, 4+i), truth->shp);
-				grad->data[idx_pred] = -(mult_fact * info->l_obj * truth->data[idx_truth]) / predictions->data[idx_pred]; // log loss
+				grad->data[idx_pred] = -(div_matched * info->l_obj * truth->data[idx_truth]) / predictions->data[idx_pred]; // log loss
 			}
 		}
 	}
@@ -532,14 +536,20 @@ class PyCUDAYolo2Cost(theano.Op):
 			if return_anchors:
 				best_idx_ptr = gpuarray.GPUArray(gpudata=anchor_indices[0].gpudata, dtype=anchor_indices[0].dtype, shape=anchor_indices[0].shape)
 			else:
-				best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
+				best_idx_ptr = gpuarray.GPUArray(shape=(np.prod(truth[0].shape[:2]),), dtype=np.int32)
 
-			best_iou_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
+			best_iou_ptr = gpuarray.GPUArray(shape=(np.prod(truth[0].shape[:2]),), dtype=np.float32)
+
 			yolo_ptr, _ = get_yolo_info(n_classes, n_anchors, l_obj, l_noobj, anchors)
 
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
-			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+
+			n_total = int(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
+			n_matched = int(best_idx_ptr[best_idx_ptr != -1].size)
+
+			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, n_matched, n_total, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+
 			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data)) # do sum using reduction
 			foo = np.zeros(1, dtype=np.float32)
 			tmp.get(foo)
@@ -592,19 +602,26 @@ class PyCUDAYolo2CostGrad(theano.Op):
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
 			z_ptr, z_obj = get_tens_ptr(z[0])
-			best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
-			best_iou_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
+
+			# store as gpuarray
+			best_idx_ptr = gpuarray.GPUArray(shape=(np.prod(truth[0].shape[:2]),), dtype=np.int32)
+			best_iou_ptr = gpuarray.GPUArray(shape=(np.prod(truth[0].shape[:2]),), dtype=np.float32)
+
 			yolo_ptr, _ = get_yolo_info(n_classes, n_anchors, l_obj, l_noobj, anchors)
+
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
-			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+
+			n_total = int(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
+			n_matched = int(best_idx_ptr[best_idx_ptr != -1].size)
+
+			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, n_matched, n_total,
+					block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+
 			# free all memory
 			best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
 
 		return thunk
 
-
 def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors=False):
 	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors)(x, truth)
-
-	
