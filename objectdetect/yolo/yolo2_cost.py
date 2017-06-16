@@ -1,6 +1,4 @@
 import theano
-# import theano.sandbox.cuda as tcuda
-# import theano.misc.pycuda_init
 import theano.tensor as T
 import theano.gpuarray.basic_ops as basic_ops
 import pygpu.gpuarray as pygpu
@@ -11,6 +9,7 @@ import numpy as np
 import numpy.random as npr
 
 import pycuda.gpuarray as gpuarray
+import pycuda.autoinit
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 
@@ -116,13 +115,12 @@ yolo_code = """
 			+ powf(box1[0]+box1[2]-box2[0]-box2[2],2) + powf(box1[1]+box1[3]-box2[1]-box2[3],2));
 	}
 	
-	__device__ void get_anchor_box(float *box, int anchor, int row, int col, yolo_info *info)
+	__device__ void get_anchor_box(float *box, tens4 *predictions, int anchor, int row, int col, yolo_info *info)
 	{
-		box[0] = (col+0.5) - info->anchors[2*anchor]/2;
-		box[1] = (row+0.5) - info->anchors[2*anchor+1]/2;
-		box[2] = (col+0.5) + info->anchors[2*anchor]/2;
-		box[3] = (row+0.5) + info->anchors[2*anchor+1]/2;
-
+		box[0] = (col+0.5)/predictions->shp.dim4 - info->anchors[2*anchor]/2;
+		box[1] = (row+0.5)/predictions->shp.dim3 - info->anchors[2*anchor+1]/2;
+		box[2] = info->anchors[2*anchor];
+		box[3] = info->anchors[2*anchor+1];
 
 		//box[0] = predictions->data[asg_to_ind4(make_asg4(N,0+anchor*(5+info->n_classes),row,col),predictions->shp)];
 		//box[1] = predictions->data[asg_to_ind4(make_asg4(N,1+anchor*(5+info->n_classes),row,col),predictions->shp)];
@@ -178,7 +176,7 @@ yolo_code = """
 				{
 					for(l=0; l<info->n_anchors; l++)
 					{
-						get_anchor_box(anchor_box, l, j, k, info); // fills box with predictions
+						get_anchor_box(anchor_box, predictions, l, j, k, info); // fills box with predictions
 						
 						new_iou = iou_box(anchor_box, truth_box);
 						new_idx = asg_to_ind4(make_asg4(N,l*(5+info->n_classes),j,k), predictions->shp);
@@ -188,7 +186,7 @@ yolo_code = """
 							// check that bounding box hasn't already been assigned
 							for(m=0; m<i; m++)
 							{
-								if(best_indices[truth->shp.dim1 + m] == new_idx)
+								if(best_indices[N*truth->shp.dim2 + m] == new_idx)
 									found = true;
 							}
 							if(!found)
@@ -479,8 +477,8 @@ class PyCUDAYolo2Cost(theano.Op):
 	
 	def make_node(self, x, truth):
 		context_name = basic_ops.infer_context_name(x, truth)
-        x = basic_ops.gpu_contiguous(x)
-        truth = basic_ops.gpu_contiguous(truth)
+        	x = basic_ops.gpu_contiguous(x)
+        	truth = basic_ops.gpu_contiguous(truth)
 		return theano.Apply(self, [x,truth], [T.scalar()])
 	
 	def infer_shape(self, node, ishapes):
@@ -522,8 +520,6 @@ class PyCUDAYolo2Cost(theano.Op):
 			foo = np.zeros(1, dtype=np.float32)
 			tmp.get(foo)
 			z[0] = foo[0]
-
-			pdb.set_trace()
 
 			# free all memory
 			x_ptr.free(); truth_ptr.free(); cost_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
