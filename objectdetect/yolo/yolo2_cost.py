@@ -116,16 +116,22 @@ yolo_code = """
 			+ powf(box1[0]+box1[2]-box2[0]-box2[2],2) + powf(box1[1]+box1[3]-box2[1]-box2[3],2));
 	}
 	
-	__device__ void get_pred_box(float *box, tens4 *predictions, int N, int anchor, int row, int col, yolo_info *info)
+	__device__ void get_anchor_box(float *box, int anchor, int row, int col, yolo_info *info)
 	{
-		box[0] = predictions->data[asg_to_ind4(make_asg4(N,0+anchor*(5+info->n_classes),row,col),predictions->shp)];
-		box[1] = predictions->data[asg_to_ind4(make_asg4(N,1+anchor*(5+info->n_classes),row,col),predictions->shp)];
-		box[2] = info->anchors[2*anchor] * expf(predictions->data[asg_to_ind4(make_asg4(N,2+anchor*(5+info->n_classes),row,col),predictions->shp)]);
-		box[3] = info->anchors[2*anchor+1] * expf(predictions->data[asg_to_ind4(make_asg4(N,3+anchor*(5+info->n_classes),row,col),predictions->shp)]);
+		box[0] = (col+0.5) - info->anchors[2*anchor]/2;
+		box[1] = (row+0.5) - info->anchors[2*anchor+1]/2;
+		box[2] = (col+0.5) + info->anchors[2*anchor]/2;
+		box[3] = (row+0.5) + info->anchors[2*anchor+1]/2;
+
+
+		//box[0] = predictions->data[asg_to_ind4(make_asg4(N,0+anchor*(5+info->n_classes),row,col),predictions->shp)];
+		//box[1] = predictions->data[asg_to_ind4(make_asg4(N,1+anchor*(5+info->n_classes),row,col),predictions->shp)];
+		//box[2] = info->anchors[2*anchor] * expf(predictions->data[asg_to_ind4(make_asg4(N,2+anchor*(5+info->n_classes),row,col),predictions->shp)]);
+		//box[3] = info->anchors[2*anchor+1] * expf(predictions->data[asg_to_ind4(make_asg4(N,3+anchor*(5+info->n_classes),row,col),predictions->shp)]);
 		
 		// network predicts the center of the bounding box, we need to set x_1, x_2 to be the top left corner
-		box[0] += ((col+0.5)/predictions->shp.dim4 - box[2]/2);
-		box[1] += ((row+0.5)/predictions->shp.dim3 - box[3]/2);
+		//box[0] += ((col+0.5)/predictions->shp.dim4 - box[2]/2);
+		//box[1] += ((row+0.5)/predictions->shp.dim3 - box[3]/2);
 	}
 	
 	__device__ void get_truth_box(float *box, tens3 *truth, int N, int gt)
@@ -154,7 +160,7 @@ yolo_code = """
 		int N, i, j, k, l, m, new_idx, best_idx;
 		float best_iou, new_iou;
 		float truth_box[4];
-		float pred_box[4];
+		float anchor_box[4];
 		bool found;
 		float MIN_IOU = .01;
 		N = blockIdx.x;
@@ -172,9 +178,9 @@ yolo_code = """
 				{
 					for(l=0; l<info->n_anchors; l++)
 					{
-						get_pred_box(pred_box, predictions, N, l, j, k, info); // fills box with predictions
+						get_anchor_box(anchor_box, l, j, k, info); // fills box with predictions
 						
-						new_iou = iou_box(pred_box, truth_box);
+						new_iou = iou_box(anchor_box, truth_box);
 						new_idx = asg_to_ind4(make_asg4(N,l*(5+info->n_classes),j,k), predictions->shp);
 						if(new_iou > best_iou)
 						{
@@ -187,7 +193,6 @@ yolo_code = """
 							}
 							if(!found)
 							{
-								printf("%.2f %.2f %.2f %.2f\\n", pred_box[0], pred_box[1], pred_box[2], pred_box[3]);
 								best_iou = new_iou; best_idx = new_idx;
 							}
 						}
@@ -225,7 +230,7 @@ yolo_code = """
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
 		{
 			asg = ind_to_asg4(best_indices[N*truth->shp.dim2+match_idx], cost->shp);
-			if(asg.dim1==N && asg.dim2==anchor*(5+info->n_classes) && asg.dim3==s1 && asg.dim4==s2)
+			if(asg.dim1==N && asg.dim2==anchor*(5+info->n_classes) && asg.dim3==s1 && asg.dim4==s2 && best_ious[N*truth->shp.dim2+match_idx] != -1)
 			{
 				chosen = true;
 				break;
@@ -317,7 +322,7 @@ yolo_code = """
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
 		{
 			asg = ind_to_asg4(best_indices[N*truth->shp.dim2+match_idx], grad->shp);
-			if(asg.dim1==N && asg.dim2==anchor*(5+info->n_classes) && asg.dim3==s1 && asg.dim4==s2)
+			if(asg.dim1==N && asg.dim2==anchor*(5+info->n_classes) && asg.dim3==s1 && asg.dim4==s2 && best_ious[N*truth->shp.dim2+match_idx] != -1)
 			{
 				chosen = true;
 				break;
@@ -513,10 +518,12 @@ class PyCUDAYolo2Cost(theano.Op):
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
-			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data))
+			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data)) # do sum using reduction
 			foo = np.zeros(1, dtype=np.float32)
 			tmp.get(foo)
 			z[0] = foo[0]
+
+			pdb.set_trace()
 
 			# free all memory
 			x_ptr.free(); truth_ptr.free(); cost_ptr.free(); best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
