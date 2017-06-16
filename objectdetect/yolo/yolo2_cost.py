@@ -210,7 +210,7 @@ yolo_code = """
 		}
 	}
 	
-	__global__ void yolo_v2_cost(tens4 *cost, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info, int n_matches, int n_total)
+	__global__ void yolo_v2_cost(tens4 *cost, int *best_indices, float *best_ious, tens4 *predictions, tens3 *truth, yolo_info *info, int n_matched, int n_total)
 	{
 		// define cost function
 		float (*cost_fn)(float);
@@ -224,7 +224,7 @@ yolo_code = """
 		anchor = threadIdx.x;
 
 		div_matched = 1. / (n_matched); // mean of matched objects
-		div_unmatched = 1. / (n_total - n_matched)
+		div_unmatched = 1. / (n_total - n_matched);
 		
 		// check if box was matched
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
@@ -318,7 +318,7 @@ yolo_code = """
 		asg4 asg;
 		
 		div_matched = 1. / (n_matched); // mean of matched objects
-		div_unmatched = 1. / (n_total - n_matched)
+		div_unmatched = 1. / (n_total - n_matched);
 		
 		// check if box was matched
 		for(match_idx=0; match_idx<truth->shp.dim2; match_idx++)
@@ -544,11 +544,12 @@ class PyCUDAYolo2Cost(theano.Op):
 
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
-
-			n_total = int(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
-			n_matched = int(best_idx_ptr[best_idx_ptr != -1].size)
-
-			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, n_matched, n_total, block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
+			
+			n_total = np.int32(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
+			n_matched = np.int32(gpuarray.sum(best_idx_ptr != -1).get())
+	
+			cost_fn(cost_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, n_matched, n_total,
+				block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
 
 			tmp = gpuarray.sum(gpuarray.GPUArray(cost_obj.shape, cost_obj.dtype, gpudata=cost_obj.data)) # do sum using reduction
 			foo = np.zeros(1, dtype=np.float32)
@@ -557,9 +558,9 @@ class PyCUDAYolo2Cost(theano.Op):
 
 			# free all memory
 			if not return_anchors:
-				best_idx_ptr.free()
+				del best_idx_ptr
 
-			cost_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
+			cost_ptr.free(); del best_iou_ptr; yolo_ptr.free()
 
 		return thunk
 
@@ -572,7 +573,6 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		self.l_obj = l_obj
 		self.l_noobj = l_noobj
 		self.anchors = anchors
-		self.return_anchors = return_anchors
 	
 	def make_node(self, x, truth):
 		x = basic_ops.gpu_contiguous(x)
@@ -612,14 +612,14 @@ class PyCUDAYolo2CostGrad(theano.Op):
 			# get best index
 			index_fn(best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, block=(1,1,1), grid=(x[0].shape[0],1,1))
 
-			n_total = int(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
-			n_matched = int(best_idx_ptr[best_idx_ptr != -1].size)
+			n_total = np.int32(x[0].shape[0] * n_anchors * np.prod(x[0].shape[-2:]))
+			n_matched = np.int32(gpuarray.sum(best_idx_ptr != -1).get())
 
 			grad_fn(z_ptr, best_idx_ptr, best_iou_ptr, x_ptr, truth_ptr, yolo_ptr, n_matched, n_total,
 					block=(n_anchors,1,1), grid=(x[0].shape[0],x[0].shape[2],x[0].shape[3]))
 
 			# free all memory
-			best_idx_ptr.free(); best_iou_ptr.free(); yolo_ptr.free()
+			del best_idx_ptr; del best_iou_ptr; yolo_ptr.free()
 
 		return thunk
 
