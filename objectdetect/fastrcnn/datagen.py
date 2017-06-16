@@ -14,23 +14,30 @@ import cv2
 
 import pdb
 
-def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, n_pos=400, verbose=True):
+def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, easy=.2, n_pos=400, verbose=True):
+	'''
+	easy: fraction of negative examples which are considered "easy"
+	'''
 	examples = []
 	for i in range(annotations.__len__()):
 		imsize = annotations[i]['size']
 		annotation = annotations[i]['annotations']
 		boxes = format_boxes(annotation)
 		proposals = generate_proposal_boxes(boxes, imsize, n_box=n_box)
-		neg_idx, pos_idx, obj_idx = find_valid_boxes(boxes, proposals)
+		neg_idx_easy, neg_idx_hard, pos_idx, obj_idx = find_valid_boxes(boxes, proposals, ret_easy=True)
 		print('Generated {} negative regions, and {} positive regions. {} objects in image.'.format(neg_idx.size, pos_idx.size, annotation.__len__()))
-		if neg_idx.size < n_neg:
-			neg_idx = np.concatenate((neg_idx, npr.choice(neg_idx, size=n_neg - neg_idx.size, replace=True)))
+		n_easy = int(n_neg * easy)
+		n_hard = n_neg - n_easy
+		if neg_idx_hard.size < n_hard:
+			neg_idx_hard = np.concatenate((negneg_idx_hard_idx, npr.choice(neg_idx_hard, size=n_hard - neg_idx_hard.size, replace=True)))
+		if neg_idx_easy.size < n_easy:
+			neg_idx_easy = np.concatenate((neg_idx_easy, npr.choice(neg_idx_easy, size=n_easy - neg_idx_easy.size, replace=True)))
 		if pos_idx.size < n_pos:
 			idx = np.arange(pos_idx.size)
 			idx = np.concatenate((idx, npr.choice(idx, size=n_pos - idx.size, replace=True)))
 			pos_idx, obj_idx = pos_idx[idx], obj_idx[idx]
 
-		neg_idx = npr.choice(neg_idx, size=n_neg, replace=False)
+		neg_idx = np.concatenate((npr.choice(neg_idx_hard, size=n_hard, replace=False), npr.choice(neg_idx_easy, size=n_easy, replace=False)))
 		idx = np.arange(pos_idx.size); idx = npr.choice(idx, size=n_pos, replace=False)
 		pos_idx, obj_idx = pos_idx[idx], obj_idx[idx]
 
@@ -193,9 +200,11 @@ def generate_proposal_boxes(boxes, image_size, n_box=20, min_size=0.05 * 0.05):
 
 	return proposals
 
-def find_valid_boxes(boxes, proposals):
+def find_valid_boxes(boxes, proposals, ret_easy=False):
 	'''
 	from the proposals, find the valid negative/positive examples
+
+	ret_easy: return a set of easy examples (iou < 0.1) as well
 	'''
 	boxes = boxes.reshape((1,) + boxes.shape)
 	proposals = proposals.reshape(proposals.shape + (1,))
@@ -222,15 +231,17 @@ def find_valid_boxes(boxes, proposals):
 	# 	),
 	# 	overlap < 1.
 	# )
-	neg_idx = np.bitwise_and(
+	neg_idx_hard = np.bitwise_and(
 		iou > 0.1,
 		iou < 0.5
 	)
 	
 	pos_idx = iou > 0.5
+
+	neg_idx_easy = np.sum(iou < 0.1, axis=1) == iou.shape[1]
 	
 	# get any box which doesn't overlap with any box
-	neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) >= 1, np.sum(iou < .5, axis=1) == iou.shape[1])
+	neg_idx_hard = np.bitwise_and(np.sum(neg_idx_hard, axis=1) >= 1, np.sum(iou < .5, axis=1) == iou.shape[1])
 	# neg_idx = np.bitwise_and(np.sum(neg_idx, axis=1) > 0, np.sum(overlap < .4, axis=1) == iou.shape[1])
 	#neg_idx = np.sum(neg_idx, axis=1) >= 1
 	
@@ -242,7 +253,10 @@ def find_valid_boxes(boxes, proposals):
 	# get object index for matched object
 	obj_idx = iou[pos_idx,:].argmax(axis=1)
 	
-	return indices[neg_idx], indices[pos_idx], obj_idx
+	if not ret_easy:
+		return indices[neg_idx_hard], indices[pos_idx], obj_idx
+	else:
+		return indices[neg_idx_easy], indices[neg_idx_hard], indices[pos_idx], obj_idx
 
 def colour_space_augmentation(im):
 	im = color.rgb2hsv(im)
