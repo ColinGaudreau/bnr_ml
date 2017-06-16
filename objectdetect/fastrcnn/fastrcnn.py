@@ -174,7 +174,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		if not hasattr(self, '_train_fn') or not hasattr(self, '_test_fn'):
 			print_obj.println('Getting cost...')
 			cost, extras = self._get_cost(self._detect, self._localize, target, lmbda=lmbda)
-			cost_test, _ = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
+			cost_test, extras_test = self._get_cost(self._detect_test, self._localize_test, target, lmbda=lmbda)
 			
 			if lmbda == 0:
 				params = self.get_params()[:-2]
@@ -188,7 +188,9 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			self._train_fn = theano.function([self.input, self.boxes, target], output_args, updates=updates)
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
 			ti = time.time();
-			self._test_fn = theano.function([self.input, self.boxes, target], cost_test)
+			output_args = [cost_test]
+			output_args.extend(extras_test)
+			self._test_fn = theano.function([self.input, self.boxes, target], output_args)
 			print_obj.println('Compiling test function took %.3f seconds' % (time.time() - ti,))
 
 		print_obj.println('Beginning training')
@@ -209,9 +211,17 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		extras_batch = [float(e) for e in np.mean(np.asarray(extras_batch), axis=0)]
 		extras['cost_class'] = extras_batch[0]
 		extras['cost_coord'] = extras_batch[1]
-		
+
+		extras_batch = []
 		for Xbatch, boxes_batch, ybatch in data_generator(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, boxes_batch, ybatch))
+			ret_args = self._test_fn(Xbatch, boxes_batch, ybatch)
+			err = ret_args[0]
+			extras_batch.append(ret_args[1:])
+			test_loss_batch.append(err)
+
+		extras_batch = [float(e) for e in np.mean(np.asarray(extras_batch), axis=0)]
+		extras['cost_class_test'] = extras_batch[0]
+		extras['cost_coord_test'] = extras_batch[1]
 
 		train_loss = np.mean(train_loss_batch)
 		test_loss = np.mean(test_loss_batch)
