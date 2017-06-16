@@ -154,4 +154,13 @@ class BasicExperiment(object):
 		if weights is not None:
 			self.learning_object.load_model(weights)
 
+	def delete(self):
+		if self.experiment is not None:
+			results = self._session.query(db.TrainingResult).filter(db.TrainingResult.experiment_id == self.experiment.id).all()
+			for result in results:
+				self._session.delete(result)
+			self._session.delete(self.experiment)
+			self._session.commit()
+			self.experiment = None
+
 
