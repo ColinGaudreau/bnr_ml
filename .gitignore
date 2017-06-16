@@ -5,7 +5,7 @@
 *.m~
 *.DS_Store
 **/*.DS_Store
-
+*.swp
 **/*.pyc
 
 # executables
