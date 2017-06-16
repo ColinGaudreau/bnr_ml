@@ -184,8 +184,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			if use_custom_cost:
 				constants = []
-				cost =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
-				cost_test =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes)
+				cost, anchors =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_anchors=True)
+				cost_test, _ =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_anchors=True)
 			else:
 				cost, constants, extras = self._get_cost(self.output, self.target, rescore=rescore)
 				cost_test, _, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
@@ -199,7 +199,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			print_obj.println('Compiling...\n')
 			ti = time.time()
 			if use_custom_cost:
-				self._train_fn = theano.function([self.input, self.target], cost, updates=updates)
+				self._train_fn = theano.function([self.input, self.target], [cost, anchors], updates=updates)
 				self._test_fn = theano.function([self.input, self.target], cost_test)
 			else:
 				output_vars = [cost]
@@ -211,36 +211,55 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 		print_obj.println('Beginning training...\n')
 
-		train_loss_batch = []
-		test_loss_batch = []
-		extras = {'rows': [], 'cols': [], 'anchors': []}
-		cost_breakdown = []
+		if use_custom_cost:
+			train_loss_batch = []
+			test_loss_batch = []
+			extras = {'anchors': []}
 
-		for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
-			ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
-			err = ret_args[0]
-			train_loss_batch.append(err)
-			extras['rows'].extend(ret_args[1].tolist())
-			extras['cols'].extend(ret_args[2].tolist())
-			extras['anchors'].extend(ret_args[3].tolist())
-			cost_breakdown.append(ret_args[-5:])
-			print_obj.println('Batch error: %.4f' % err)
+			for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
+				ret_args = self._train_fn(Xbatch, ybatch)
+				err = ret_args[0]
+				extras['anchors'].extend(ret_args[1])
+				print_obj.println('Batch error: %.4f' % err)
 
-		# log the breakdown of the cost function
-		cost_breakdown = [float(c) for c in np.mean(np.asarray(cost_breakdown), axis=0)]	
-		extras['cost_noobject'] = cost_breakdown[0]
-		extras['cost_anchor'] = cost_breakdown[1]
-		extras['cost_coord'] = cost_breakdown[2]
-		extras['cost_class'] = cost_breakdown[3]
-		extras['cost_obj'] = cost_breakdown[4]
+			for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
+				test_loss_batch.append(self._test_fn(Xbatch, ybatch))
+			
+			train_loss = np.mean(train_loss_batch)
+			test_loss = np.mean(test_loss_batch)
+			
+			print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
+		else:	
+			train_loss_batch = []
+			test_loss_batch = []
+			extras = {'rows': [], 'cols': [], 'anchors': []}
+			cost_breakdown = []
 
-		for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
-			test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor))
+			for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
+				ret_args = self._train_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor)
+				err = ret_args[0]
+				train_loss_batch.append(err)
+				extras['rows'].extend(ret_args[1].tolist())
+				extras['cols'].extend(ret_args[2].tolist())
+				extras['anchors'].extend(ret_args[3].tolist())
+				cost_breakdown.append(ret_args[-5:])
+				print_obj.println('Batch error: %.4f' % err)
 
-		train_loss = np.mean(train_loss_batch)
-		test_loss = np.mean(test_loss_batch)
-		
-		print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
+			# log the breakdown of the cost function
+			cost_breakdown = [float(c) for c in np.mean(np.asarray(cost_breakdown), axis=0)]	
+			extras['cost_noobject'] = cost_breakdown[0]
+			extras['cost_anchor'] = cost_breakdown[1]
+			extras['cost_coord'] = cost_breakdown[2]
+			extras['cost_class'] = cost_breakdown[3]
+			extras['cost_obj'] = cost_breakdown[4]
+
+			for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
+				test_loss_batch.append(self._test_fn(Xbatch, ybatch, lambda_obj, lambda_noobj, lambda_anchor))
+
+			train_loss = np.mean(train_loss_batch)
+			test_loss = np.mean(test_loss_batch)
+			
+			print_obj.println('\n------\nTrain Loss: %.4f, Test Loss: %.4f\n' % (train_loss, test_loss))
 
 		return float(train_loss), float(test_loss), extras
 
