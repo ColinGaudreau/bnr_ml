@@ -122,7 +122,7 @@ def generate_data_from_datastore(
 
 	for i in range(annotations.size):
 		im = format_image(imread(loc + annotations[i]['image']), dtype=theano.config.floatX)
-		im = resize(im, input_shape)
+		im = colour_space_augmentation(resize(im, input_shape))
 
 		annotation, imsize = annotations[i]['annotations'], annotations[i]['size']
 		neg_proposals, pos_proposals, obj_idx = proposals[i]['negative'], proposals[i]['positive']['proposals'], proposals[i]['positive']['object']
