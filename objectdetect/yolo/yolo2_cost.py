@@ -468,7 +468,7 @@ def get_tens_ptr(array):
 
 class PyCUDAYolo2Cost(theano.Op):
 	__props__ = ()
-	def __init__(self, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors=False):
+	def __init__(self, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors):
 		self.n_classes = n_classes
 		self.n_anchors = n_anchors
 		self.l_obj = l_obj
@@ -482,7 +482,7 @@ class PyCUDAYolo2Cost(theano.Op):
 		truth = basic_ops.gpu_contiguous(truth)
 
 		if self.return_anchors:
-			return theano.Apply(self, [x, truth], [T.scalar(), T.array(dtype=np.int32)])
+			return theano.Apply(self, [x,truth], [T.scalar(),T.vector('int32')])
 		else:
 			return theano.Apply(self, [x,truth], [T.scalar()])
 	
@@ -514,10 +514,13 @@ class PyCUDAYolo2Cost(theano.Op):
 			)
 
 			if return_anchors:
+				context = None
+				if hasattr(x[0], 'context'):
+					context = x[0].context
 				anchor_indices = outputs[1]
 				ai_shape = (np.prod(truth[0].shape[:2]),)
 				if anchor_indices[0] is None or anchor_indices[0].shape != ai_shape:
-					anchor_indices[0] = pygpu.zeros(ai_shape, dtype='int32')
+					anchor_indices[0] = pygpu.zeros(ai_shape, dtype='int32', context=context)
 
 			if z[0] is None or z[0].shape != z_shape:
 				z[0] = None
@@ -527,7 +530,7 @@ class PyCUDAYolo2Cost(theano.Op):
 			cost_ptr, cost_obj = get_tens_ptr(np.zeros_like(x[0], dtype=theano.config.floatX))
 
 			if return_anchors:
-				best_idx_ptr = anchor_indices[0].gpudata
+				best_idx_ptr = gpuarray.GPUArray(gpudata=anchor_indices[0].gpudata, dtype=anchor_indices[0].dtype, shape=anchor_indices[0].shape)
 			else:
 				best_idx_ptr = cuda.mem_alloc(8 * truth[0].shape[1] * truth[0].shape[0])
 
@@ -601,7 +604,7 @@ class PyCUDAYolo2CostGrad(theano.Op):
 		return thunk
 
 
-def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors):
-	return T.sum(PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors)(x, truth))
+def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors=False):
+	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors)(x, truth)
 
 	
