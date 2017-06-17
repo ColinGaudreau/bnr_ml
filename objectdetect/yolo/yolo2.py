@@ -275,7 +275,19 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			'''
 			Make theano do all the heavy lifting for detection, this should speed up the process marginally.
 			'''
+
 			output = self.output_test
+
+			if self.use_custom_cost:
+				new_output = None
+				for i in range(self.num_classes):
+					cls_idx = T.arange(i * (5 + self.num_classes), (i+1) * (5 + self.num_classes))
+					if new_output is None:
+						new_output = output[:,cls_idx,:,:].dimshuffle(0,'x',1,2,3)
+					else:
+						new_output = T.concatenate((new_output, output[:,cls_idx,:,:].dimshuffle(0,'x',1,2,3)), axis=1)
+				output = new_output
+
 			thresh_var = T.scalar(name='thresh')
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
 
@@ -298,78 +310,6 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			# define confidence in prediction
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
-			cls = T.argmax(output[:,:,-self.num_classes:], axis=2)
-
-			# filter out all below thresh
-			above_thresh_idx = conf > thresh_var			
-			pred = T.concatenate(
-				(
-					output[:,:,0][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
-					output[:,:,1][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
-					output[:,:,2][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
-					output[:,:,3][above_thresh_idx.nonzero()].dimshuffle(0,'x'),
-					conf[above_thresh_idx.nonzero()].dimshuffle(0,'x'),
-					cls[above_thresh_idx.nonzero()].dimshuffle(0,'x')
-				),
-				axis=1
-			)
-			
-			self._detect_fn = theano.function([self.input, thresh_var], pred)
-
-		output = self._detect_fn(im, thresh)
-
-		boxes = []
-		for i in range(output.shape[0]):
-			coord, conf, cls = output[i,:4], output[i,4], output[i,5]
-			coord[2:] += coord[:2]
-			if num_to_label is not None:
-				cls =num_to_label[cls]
-			box = utils.BoundingBox(*coord.tolist(), confidence=conf, cls=cls)
-			boxes.append(box)
-
-		return boxes
-
-	def detect2(self, im, thresh=0.75, overlap=0.5, num_to_label=None):
-		im = format_image(im, dtype=theano.config.floatX)
-
-		old_size = im.shape[:2]
-		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_LINEAR).swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
-
-		if not hasattr(self, '_detect_fn'):
-			'''
-			Make theano do all the heavy lifting for detection, this should speed up the process marginally.
-			'''
-			output = self.output_test
-			thresh_var = T.scalar(name='thresh')
-			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
-
-			# define offsets to predictions
-			w_cell, h_cell =  1. / self.output_shape[1], 1. / self.output_shape[0]
-			x, y = T.arange(w_cell / 2, 1., w_cell), T.arange(h_cell / 2, 1., h_cell)
-			y, x = meshgrid(x, y)
-
-			x, y = x.dimshuffle('x','x',0,1), y.dimshuffle('x','x',0,1)
-			
-			# define scale
-			w_acr = theano.shared(np.asarray([b[0] for b in self.boxes]), name='w_acr', borrow=True).dimshuffle('x',0,'x','x')
-			h_acr = theano.shared(np.asarray([b[1] for b in self.boxes]), name='h_acr', borrow=True).dimshuffle('x',0,'x','x')
-
-			# rescale output
-			for i in range(self.num_classes):
-				coord_idx = i * (5 + self.num_classes)
-				output = T.set_subtensor(output[:,coord_idx], self.boxes[i][0] * T.exp(output[:,coord_idx]))
-				output = T.set_subtensor(output[:,coord_idx+1], self.boxes[i][1] * T.exp(output[:,coord_idx+1]))
-				output = T.set_subtensor(output[:,coord_idx+2], self.boxes[i][0] * T.exp(output[:,coord_idx+2]))
-				output = T.set_subtensor(output[:,coord_idx+3], self.boxes[i][1] * T.exp(output[:,coord_idx+3]))
-
-			# output = T.set_subtensor(output[:,:,2], w_acr * T.exp(output[:,:,2]))
-			# output = T.set_subtensor(output[:,:,3], h_acr * T.exp(output[:,:,3]))
-			# output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - output[:,:,2] / 2)
-			# output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - output[:,:,3] / 2)
-
-			# define confidence in prediction
-			conf = output[:,:,4] * T.max(output[:q
-				:,:,-self.num_classes:], axis=2)
 			cls = T.argmax(output[:,:,-self.num_classes:], axis=2)
 
 			# filter out all below thresh
