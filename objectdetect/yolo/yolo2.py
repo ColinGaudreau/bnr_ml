@@ -281,7 +281,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			if self.use_custom_cost:
 				new_output = None
-				for i in range(self.num_classes):
+				for i in range(len(self.boxes)):
 					cls_idx = T.arange(i * (5 + self.num_classes), (i+1) * (5 + self.num_classes))
 					if new_output is None:
 						new_output = output[:,cls_idx,:,:].dimshuffle(0,'x',1,2,3)
