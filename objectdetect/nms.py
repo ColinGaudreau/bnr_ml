@@ -1,5 +1,6 @@
 from bnr_ml.objectdetect.utils import BoundingBox
 import copy
+import numpy as np
 
 METHOD_VIOLA_JONES = 'viola-jones'
 METHOD_GREEDY = 'greedy'
@@ -18,6 +19,7 @@ def nms(boxes, *args, **kwargs):
 	method = METHOD_VIOLA_JONES
 	if 'method' in kwargs:
 		method = kwargs['method']
+	
 	if method.lower() == METHOD_VIOLA_JONES:
 		detect_fn = lambda boxes, *args, **kwargs: _viola_jones(boxes, *args, **kwargs)
 	elif method.lower() == METHOD_GREEDY:
@@ -29,7 +31,7 @@ def nms(boxes, *args, **kwargs):
 		objs = []
 		for cls in classes:
 			boxes_per_cls = [box for box in boxes if box.cls == cls]
-			objs.extend(_viola_jones(boxes_per_cls, *args, **kwargs))
+			objs.extend(detect_fn(boxes_per_cls, *args, **kwargs))
 		boxes = objs
 	return boxes
 
@@ -37,7 +39,9 @@ def _greedy(boxes, *args, **kwargs):
 	overlap=0.4
 	if 'overlap' in kwargs:
 		overlap = kwargs['overlap']
-
+	if len(boxes) == 0:
+		return []
+	
 	boxes = np.asarray(boxes)
 	conf = np.asarray([b.confidence for b in boxes])
 	conf_idx = np.argsort(conf)[::-1]
@@ -54,7 +58,8 @@ def _greedy(boxes, *args, **kwargs):
 			else:
 				i += 1
 		used_boxes.append(curr_box)
-		curr_box = boxes.pop(0)
+		if len(boxes) > 0:
+			curr_box = boxes.pop(0)
 
 	return used_boxes
 
