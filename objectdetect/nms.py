@@ -1,6 +1,9 @@
 from bnr_ml.objectdetect.utils import BoundingBox
 import copy
 
+METHOD_VIOLA_JONES = 'viola-jones'
+METHOD_GREEDY = 'greedy'
+
 def nms(boxes, *args, **kwargs):
 	'''
 	Takes list of BoundingBox objects and does non maximal suppression.
@@ -11,6 +14,17 @@ def nms(boxes, *args, **kwargs):
 		n_apply = kwargs['n_apply']
 	classes = list(set([box.cls for box in boxes]))
 	boxes = copy.deepcopy(boxes)
+
+	method = METHOD_VIOLA_JONES
+	if 'method' in kwargs:
+		method = kwargs['method']
+	if method.lower() == METHOD_VIOLA_JONES:
+		detect_fn = lambda boxes, *args, **kwargs: _viola_jones(boxes, *args, **kwargs)
+	elif method.lower() == METHOD_GREEDY:
+		detect_fn = lambda boxes, *args, **kwargs: _greedy(boxes, *args, **kwargs)
+	else:
+		raise Exception('Method "{}" not valid.'.format(method))
+
 	for _ in range(n_apply):
 		objs = []
 		for cls in classes:
@@ -18,6 +32,31 @@ def nms(boxes, *args, **kwargs):
 			objs.extend(_viola_jones(boxes_per_cls, *args, **kwargs))
 		boxes = objs
 	return boxes
+
+def _greedy(boxes, *args, **kwargs):
+	overlap=0.4
+	if 'overlap' in kwargs:
+		overlap = kwargs['overlap']
+
+	boxes = np.asarray(boxes)
+	conf = np.asarray([b.confidence for b in boxes])
+	conf_idx = np.argsort(conf)[::-1]
+	boxes = boxes[conf_idx].tolist()
+	used_boxes = []
+	curr_box = boxes.pop(0)
+
+	while len(boxes) > 0:
+		i = 0
+		while i < len(boxes):
+			box = boxes[i]
+			if curr_box.iou(box) > overlap:
+				_ = boxes.pop(i)
+			else:
+				i += 1
+		used_boxes.append(curr_box)
+		curr_box = boxes.pop(0)
+
+	return used_boxes
 
 def _viola_jones(boxes, *args, **kwargs):
 	'''
