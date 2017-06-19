@@ -184,8 +184,8 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			if use_custom_cost:
 				constants = []
-				cost, anchors =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_anchors=True)
-				cost_test, _ =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_anchors=True)
+				cost, anchors =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_extras=True)
+				cost_test, _ =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_extras=True)
 			else:
 				cost, constants, extras = self._get_cost(self.output, self.target, rescore=rescore)
 				cost_test, _, _ = self._get_cost(self.output_test, self.target, rescore=rescore)
