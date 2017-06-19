@@ -184,7 +184,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			if use_custom_cost:
 				constants = []
-				cost, anchors =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_extras=True)
+				cost, anchors, c_coord, c_class, c_obj =  yolo2_cost(self.output, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_extras=True)
 				cost_test, _ =  yolo2_cost(self.output_test, self.target, self.num_classes, len(self.boxes), lambda_obj, lambda_noobj, self.boxes, return_extras=True)
 			else:
 				cost, constants, extras = self._get_cost(self.output, self.target, rescore=rescore)
@@ -199,7 +199,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			print_obj.println('Compiling...\n')
 			ti = time.time()
 			if use_custom_cost:
-				self._train_fn = theano.function([self.input, self.target], [cost, anchors], updates=updates)
+				self._train_fn = theano.function([self.input, self.target], [cost, anchors, c_coord, c_class, c_obj], updates=updates)
 				self._test_fn = theano.function([self.input, self.target], cost_test)
 			else:
 				output_vars = [cost]
@@ -215,13 +215,22 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			train_loss_batch = []
 			test_loss_batch = []
 			extras = {'anchors': []}
+			train_loss_extras = []
 
 			for Xbatch, ybatch in gen_fn(train_annotations, **train_args):
 				ret_args = self._train_fn(Xbatch, ybatch)
 				err = ret_args[0]
 				extras['anchors'].append(np.asarray(ret_args[1]).tolist())
+				train_loss_extras.append(ret_args[-3:])
+
 				train_loss_batch.append(err)
 				print_obj.println('Batch error: %.4f' % err)
+
+			# return batch mean of the breakdown of the cost
+			train_loss_extras = [float(e) for e in np.asarray(train_loss_extras).mean(axis=0)]
+			extras['cost_coord'] = train_loss_extras[0]
+			extras['cost_class'] = train_loss_extras[1]
+			extras['cost_obj'] = train_loss_extras[2]
 
 			for Xbatch, ybatch in gen_fn(test_annotations, **test_args):
 				test_loss_batch.append(self._test_fn(Xbatch, ybatch))
