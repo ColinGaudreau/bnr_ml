@@ -472,29 +472,30 @@ def get_tens_ptr(array):
 
 class PyCUDAYolo2Cost(theano.Op):
 	__props__ = ()
-	def __init__(self, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors):
+	def __init__(self, n_classes, n_anchors, l_obj, l_noobj, anchors, return_extras):
 		self.n_classes = n_classes
 		self.n_anchors = n_anchors
 		self.l_obj = l_obj
 		self.l_noobj = l_noobj
 		self.anchors = anchors
-		self.return_anchors = return_anchors
+		self.return_extras = return_extras
 	
 	def make_node(self, x, truth):
 		context_name = basic_ops.infer_context_name(x, truth)
 		x = basic_ops.gpu_contiguous(x)
 		truth = basic_ops.gpu_contiguous(truth)
 
-		if self.return_anchors:
-			return theano.Apply(self, [x,truth], [T.scalar(),T.vector('int32')])
+		if self.return_extras:
+			return theano.Apply(self, [x,truth], [T.scalar(),T.vector('int32'),T.scalar(),T.scalar(),T.scalar()])
 		else:
 			return theano.Apply(self, [x,truth], [T.scalar()])
 	
 	def infer_shape(self, node, ishapes):
-		if self.return_anchors:
-			return [ishapes[0][:0], (T.prod(ishapes[1][:2]),)]
+		sc_shape = ishape[0][:0]
+		if self.return_extras:
+			return [sc_shape, (T.prod(ishapes[1][:2]),), sc_shape, sc_shape, sc_shape]
 		else:
-			return [ishapes[0][:0]]
+			return [sc_shape]
 	
 	def grad(self, inputs, grads):
 		x, truth = inputs[0], inputs[1]
@@ -508,7 +509,7 @@ class PyCUDAYolo2Cost(theano.Op):
 		cost_fn = yolo_mod.get_function("yolo_v2_cost")
 		inputs = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
-		n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors = self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, self.anchors, self.return_anchors
+		n_classes, n_anchors, l_obj, l_noobj, anchors, return_extras = self.n_classes, self.n_anchors, self.l_obj, self.l_noobj, self.anchors, self.return_extras
 		
 		def thunk():
 			x, truth = inputs[0], inputs[1]
@@ -517,7 +518,8 @@ class PyCUDAYolo2Cost(theano.Op):
 				x[0].shape[:0],
 			)
 
-			if return_anchors:
+			if return_extras:
+				cost_coord, cost_class, cost_obj = outputs[1], outputs[2], outputs[3]
 				context = None
 				if hasattr(x[0], 'context'):
 					context = x[0].context
@@ -526,14 +528,11 @@ class PyCUDAYolo2Cost(theano.Op):
 				if anchor_indices[0] is None or anchor_indices[0].shape != ai_shape:
 					anchor_indices[0] = pygpu.zeros(ai_shape, dtype='int32', context=context)
 
-			if z[0] is None or z[0].shape != z_shape:
-				z[0] = None
-
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
 			cost_ptr, cost_obj = get_tens_ptr(np.zeros_like(x[0], dtype=theano.config.floatX))
 
-			if return_anchors:
+			if return_extras:
 				best_idx_ptr = gpuarray.GPUArray(gpudata=anchor_indices[0].gpudata, dtype=anchor_indices[0].dtype, shape=anchor_indices[0].shape)
 			else:
 				best_idx_ptr = gpuarray.GPUArray(shape=(np.prod(truth[0].shape[:2]),), dtype=np.int32)
@@ -556,8 +555,17 @@ class PyCUDAYolo2Cost(theano.Op):
 			tmp.get(foo)
 			z[0] = foo[0]
 
+			# return components of the cost
+			coord_idx = np.asarray([i + np.arange(4) for i in range(i,(5+n_classes) * n_anchors, 5+n_classes)]).flatten()
+			class_idx = np.asarray([i+5+np.arange(n_classes) for i in range(i,(5+n_classes) * n_anchors, 5+n_classes)]).flatten()
+			obj_idx = np.arange(i+4,(5+n_classes) * n_anchors,5+n_classes)
+
+			cost_coord[0] = np.sum(z[0][:,coord_idx])
+			cost_class[0] = np.sum(z[0][:,class_idx])
+			cost_obj[0] = np.sum(z[0][:,obj_idx])
+
 			# free all memory
-			if not return_anchors:
+			if not return_extras:
 				del best_idx_ptr
 
 			cost_ptr.free(); del best_iou_ptr; yolo_ptr.free()
