@@ -491,7 +491,7 @@ class PyCUDAYolo2Cost(theano.Op):
 			return theano.Apply(self, [x,truth], [T.scalar()])
 	
 	def infer_shape(self, node, ishapes):
-		sc_shape = ishape[0][:0]
+		sc_shape = ishapes[0][:0]
 		if self.return_extras:
 			return [sc_shape, (T.prod(ishapes[1][:2]),), sc_shape, sc_shape, sc_shape]
 		else:
@@ -519,7 +519,7 @@ class PyCUDAYolo2Cost(theano.Op):
 			)
 
 			if return_extras:
-				cost_coord, cost_class, cost_obj = outputs[1], outputs[2], outputs[3]
+				cost_coord, cost_class, cost_object = outputs[2], outputs[3], outputs[4]
 				context = None
 				if hasattr(x[0], 'context'):
 					context = x[0].context
@@ -554,16 +554,16 @@ class PyCUDAYolo2Cost(theano.Op):
 			foo = np.zeros(1, dtype=np.float32)
 			tmp.get(foo)
 			z[0] = foo[0]
+			
+			if return_extras:
+				cost_on_gpu = cost_obj.get_val()
+				cost_coord[0], cost_class[0], cost_object[0] = 0., 0., 0.
 
-			# return components of the cost
-			coord_idx = np.asarray([i + np.arange(4) for i in range(i,(5+n_classes) * n_anchors, 5+n_classes)]).flatten()
-			class_idx = np.asarray([i+5+np.arange(n_classes) for i in range(i,(5+n_classes) * n_anchors, 5+n_classes)]).flatten()
-			obj_idx = np.arange(i+4,(5+n_classes) * n_anchors,5+n_classes)
-
-			cost_coord[0] = np.sum(z[0][:,coord_idx])
-			cost_class[0] = np.sum(z[0][:,class_idx])
-			cost_obj[0] = np.sum(z[0][:,obj_idx])
-
+				for i in range(0, (5+n_classes) * n_anchors, 5+n_classes):
+					cost_coord[0] += np.sum(cost_on_gpu[:,i:i+4])
+					cost_class[0] += np.sum(cost_on_gpu[:,i+5:i+5+n_classes])
+					cost_object[0] += np.sum(cost_on_gpu[:,i+4])
+			
 			# free all memory
 			if not return_extras:
 				del best_idx_ptr
@@ -631,5 +631,5 @@ class PyCUDAYolo2CostGrad(theano.Op):
 
 		return thunk
 
-def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors=False):
-	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors, return_anchors)(x, truth)
+def yolo2_cost(x, truth, n_classes, n_anchors, l_obj, l_noobj, anchors, return_extras=False):
+	return PyCUDAYolo2Cost(n_classes, n_anchors, l_obj, l_noobj, anchors, return_extras)(x, truth)
