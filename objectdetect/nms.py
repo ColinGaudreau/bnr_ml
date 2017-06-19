@@ -12,6 +12,7 @@ def nms(boxes, *args, **kwargs):
 	n_apply = 1
 	if 'n_apply' in kwargs:
 		n_apply = kwargs['n_apply']
+
 	classes = list(set([box.cls for box in boxes]))
 	boxes = copy.deepcopy(boxes)
 
@@ -66,8 +67,17 @@ def _viola_jones(boxes, *args, **kwargs):
 	if 'overlap' in kwargs:
 		overlap = kwargs['overlap']
 
+	min_box_per_region = 2
+	if 'min_box_per_region' in kwargs:
+		min_box_per_region = kwargs['min_box_per_region']
+
 	if boxes.__len__() == 0:
 		return []
+
+	# sort boxes by confidence
+	sort_idx = np.argsort([box.confidence for box in boxes])[::-1]
+	boxes = np.asarray(boxes)[sort_idx].tolist()
+
 	scores = [box.confidence for box in boxes]
 	regions = []
 	region_scores = []
@@ -95,12 +105,15 @@ def _viola_jones(boxes, *args, **kwargs):
 	objs = []
 	new_scores = []
 	for region, score in zip(regions, region_scores):
+		if len(region) < min_box_per_region:
+			continue
+
 		box_init = region[0] / len(region)
-		box_init.confidence = score[0] / len(score)
+		box_init.confidence = np.max([score])
+
 		# average the coordinate and class confidence scores for boxes in the same region
-		for box, s in zip(region[1:], score[1:]):
+		for box in region[1:]:
 			box_init += (box / len(region))
-			box_init.confidence += (s / len(score))
 
 		# set the class name
 		objs.append(box_init)
