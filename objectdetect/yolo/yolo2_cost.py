@@ -493,7 +493,7 @@ class PyCUDAYolo2Cost(theano.Op):
 	def infer_shape(self, node, ishapes):
 		sc_shape = ishapes[0][:0]
 		if self.return_extras:
-			return [sc_shape, (T.prod(ishapes[1][:2]),), sc_shape, sc_shape, sc_shape]
+			return [sc_shape, (T.prod(ishapes[1][:2])+1,), sc_shape, sc_shape, sc_shape]
 		else:
 			return [sc_shape]
 	
@@ -524,9 +524,10 @@ class PyCUDAYolo2Cost(theano.Op):
 				if hasattr(x[0], 'context'):
 					context = x[0].context
 				anchor_indices = outputs[1]
-				ai_shape = (np.prod(truth[0].shape[:2]),)
+				ai_shape = (np.prod(truth[0].shape[:2]) + 1,)
 				if anchor_indices[0] is None or anchor_indices[0].shape != ai_shape:
 					anchor_indices[0] = pygpu.zeros(ai_shape, dtype='int32', context=context)
+					anchor_indices[0][-1] = x[0].shape[0] # store associated batch_size
 
 			x_ptr, _ = get_tens_ptr(x[0])
 			truth_ptr, _ = get_tens_ptr(truth[0])
@@ -556,7 +557,7 @@ class PyCUDAYolo2Cost(theano.Op):
 			z[0] = foo[0]
 			
 			if return_extras:
-				cost_on_gpu = cost_obj.get_val()
+				cost_on_gpu = cost_obj.get_val() # transfer data onto host
 				cost_coord[0], cost_class[0], cost_object[0] = 0., 0., 0.
 
 				for i in range(0, (5+n_classes) * n_anchors, 5+n_classes):
