@@ -393,7 +393,7 @@ class SingleShotDetector(BaseLearningObject):
 			cost_coord += cost_coord_fmap / pos_size
 			cost_class += alpha * cost_class_fmap / pos_size
 			cost_noobj += alpha * cost_noobj_fmap / neg_size
-			cost += cost_fmap
+			# cost += cost_fmap
 
 		cost = cost_coord + cost_class + cost_noobj
 
