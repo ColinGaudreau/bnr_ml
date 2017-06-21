@@ -8,7 +8,7 @@ class BoundingBox(object):
 	'''
 	Helper class for managing bounding boxes
 	'''
-	def __init__(self, xi,yi,xf,yf, cls=None, confidence=0.):
+	def __init__(self, xi,yi,xf,yf, cls='', confidence=0.):
 		if xi > xf:
 			self.xi = xf
 			self.xf = xi
@@ -96,7 +96,7 @@ class BoundingBox(object):
 	'''
 
 	def __str__(self):
-		if self.cls is None:
+		if self.cls == '':
 			retstr = 'BoundingBox([{},{},{},{}])'.format(self.xi, self.yi, self.xf, self.yf)
 		else:
 			retstr = 'BoundingBox([{},{},{},{}], class={}, confidence={})'.format(self.xi, self.yi, self.xf, self.yf, self.cls, self.confidence)
@@ -223,7 +223,6 @@ def draw_boxes(im, boxes, color=(255,255,255)):
 			if box.cls is not None:
 				text += ', '
 			text += ('Confidence: %.2f' % box.confidence)
-
 		draw.rectangle(box.tolist(), outline=label_color)
 		draw.text(box.tolist()[:2], text, fill=label_color)
 
