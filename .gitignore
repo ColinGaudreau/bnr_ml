@@ -29,3 +29,6 @@ data/*
 # ignore virtual env
 venv/**
 venv/*
+
+**/build/*
+build/*

@@ -1,5 +1,6 @@
 import numpy as np
-cimport numpy as np
+cimport numpy as cnp
+import sys
 
 def get_alpha(rho):
     diag = np.arange(rho.shape[0])
@@ -8,32 +9,32 @@ def get_alpha(rho):
     alpha = np.nan_to_num(alpha, 0.)
     return alpha
 
-def get_rho(np.ndarray s_hat, np.ndarray alpha, np.ndarray phi):
+def get_rho(cnp.ndarray s_hat, cnp.ndarray alpha, cnp.ndarray phi):
     cdef int i
     cdef int j
-    cdef np.ndarray rho = np.zeros_like(s_hat)
-    cdef np.ndarray idx
-    cdef np.ndarray idx2
+    cdef cnp.ndarray rho = np.zeros_like(s_hat)
+    cdef cnp.ndarray idx
+    cdef cnp.ndarray idx2
 
     for i in range(rho.shape[0]):
         for j in range(rho.shape[1]):
             if i == j:
                 idx = np.delete(np.arange(s_hat.shape[1]), i)
-                rho[i,j] = s_hat[i,j] - np.max(s_hat[i,idx]) + alpha[i,idx]) + np.sum(phi[i,idx])
+                rho[i,j] = s_hat[i,j] - np.max(s_hat[i,idx] + alpha[i,idx]) + np.sum(phi[i,idx])
             else:
                 idx = np.delete(np.arange(s_hat.shape[1]), [i,j])
                 idx2 = np.delete(np.arange(s_hat.shape[1]), i)
-                rho[i,j] = s_hat[i,j] - np.maximum(np.max(s_hat[i,idx1] + alpha[i,idx1]),
+                rho[i,j] = s_hat[i,j] - np.maximum(np.max(s_hat[i,idx] + alpha[i,idx]),
                                             s_hat[i,i] + alpha[i,i] + np.sum(phi[i,idx2]))
 
     return rho
 
-def get_gamma(s_hat, alpha, phi):
+def get_gamma(cnp.ndarray s_hat, cnp.ndarray alpha, cnp.ndarray phi):
     cdef int i
     cdef int j
-    cdef np.ndarray gamma = np.zeros_like(s_hat)
-    cdef np.ndarray idx1
-    cdef np.ndarray idx2
+    cdef cnp.ndarray gamma = np.zeros_like(s_hat)
+    cdef cnp.ndarray idx1
+    cdef cnp.ndarray idx2
 
     for i in range(s_hat.shape[0]):
         for k in range(s_hat.shape[1]):
@@ -42,12 +43,12 @@ def get_gamma(s_hat, alpha, phi):
             gamma[i,k] = s_hat[i,i] + alpha[i,i] - np.max(s_hat[i,idx1] + alpha[i,idx1]) + np.sum(phi[i,idx2])
     return gamma
 
-def get_phi(gamma, r_hat):
+def get_phi(cnp.ndarray gamma, cnp.ndarray r_hat):
     cdef int i
     cdef int k
-    cdef np.ndarray phi = np.zeros_like(gamma)
-    cdef np.ndarray term1
-    cdef np.ndarray term2
+    cdef cnp.ndarray phi = np.zeros_like(gamma)
+    cdef float term1
+    cdef float term2
 
     for i in range(phi.shape[0]):
         for k in range(phi.shape[0]):
@@ -123,9 +124,5 @@ def aff_prop(S, iterations=10, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
         e4 = np.nan_to_num(np.sum((phi - phi_old)**2), 0.)
         e = e1 + e2 + e3 + e4
         
-        if itr % print_every == 0:
-#             pass
-            sys.stdout.write('\rIteration {}/{}.   {}'.format(itr+1, iterations, e))
-
     return get_c(alpha, phi, rho, gamma)
 
