@@ -9,12 +9,12 @@ def get_alpha(rho):
     alpha = np.nan_to_num(alpha, 0.)
     return alpha
 
-def get_rho(np.ndarray s_hat, np.ndarray alpha, np.ndarray phi):
+def get_rho(np.ndarray[DTYPE_t, ndim=2] s_hat, np.ndarray[DTYPE_t, ndim=2] alpha, np.ndarray[DTYPE_t, ndim=2] phi):
     cdef int i
     cdef int j
-    cdef np.ndarray rho = np.zeros_like(s_hat)
-    cdef np.ndarray idx
-    cdef np.ndarray idx2
+    cdef np.ndarray[DTYPE_t, ndim=2] rho = np.zeros_like(s_hat)
+    cdef np.ndarray[DTYPE_t, ndim=1] idx
+    cdef np.ndarray[DTYPE_t, ndim=1] idx2
 
     for i in range(rho.shape[0]):
         for j in range(rho.shape[1]):
@@ -29,12 +29,12 @@ def get_rho(np.ndarray s_hat, np.ndarray alpha, np.ndarray phi):
 
     return rho
 
-def get_gamma(np.ndarray s_hat, np.ndarray alpha, np.ndarray phi):
+def get_gamma(np.ndarray[DTYPE_t, ndim=2] s_hat, np.ndarray[DTYPE_t, ndim=2] alpha, np.ndarray[DTYPE_t, ndim=2][DTYPE_t, ndim=2] phi):
     cdef int i
     cdef int j
-    cdef np.ndarray gamma = np.zeros_like(s_hat)
-    cdef np.ndarray idx1
-    cdef np.ndarray idx2
+    cdef np.ndarray[DTYPE_t, ndim=2] gamma = np.zeros_like(s_hat)
+    cdef np.ndarray[DTYPE_t, ndim=1] idx1
+    cdef np.ndarray[DTYPE_t, ndim=1] idx2
 
     for i in range(s_hat.shape[0]):
         for k in range(s_hat.shape[1]):
@@ -43,10 +43,10 @@ def get_gamma(np.ndarray s_hat, np.ndarray alpha, np.ndarray phi):
             gamma[i,k] = s_hat[i,i] + alpha[i,i] - np.max(s_hat[i,idx1] + alpha[i,idx1]) + np.sum(phi[i,idx2])
     return gamma
 
-def get_phi(np.ndarray gamma, np.ndarray r_hat):
+def get_phi(np.ndarray[DTYPE_t, ndim=2] gamma, np.ndarray[DTYPE_t, ndim=2] r_hat):
     cdef int i
     cdef int k
-    cdef np.ndarray phi = np.zeros_like(gamma)
+    cdef np.ndarray[DTYPE_t, ndim=2] phi = np.zeros_like(gamma)
     cdef float term1
     cdef float term2
 
