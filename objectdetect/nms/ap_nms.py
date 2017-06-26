@@ -133,6 +133,8 @@ def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.
     gamma = np.zeros_like(s_hat)
     rho = np.zeros_like(s_hat)
     phi = np.zeros_like(s_hat)
+
+    ll_old = 0;
     
     for itr in range(iterations):
         rho_old, gamma_old, alpha_old, phi_old = rho, gamma, alpha, phi
@@ -143,11 +145,9 @@ def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.
         rho = damping * rho + (1 - damping) * get_rho(s_hat, alpha, phi)
         gamma = damping * gamma + (1 - damping) * get_gamma(s_hat, alpha, phi)
        
-        err = np.mean(np.nan_to_num(alpha - alpha_old, 0.)**2) + \
-		np.mean(np.nan_to_num(phi - phi_old, 0.)**2) + \
-		np.mean(np.nan_to_num(rho - rho_old, 0.)**2) + \
-		np.mean(np.nan_to_num(gamma - gamma_old, 0.)**2)
-        if err < tol:
+        ll = np.nan_to_num(alpha + phi + rho + gamma, 0.).sum() # check log likelihood
+
+        if (ll - ll_old) < tol:
             break;
 
         if (itr + 1) % print_every == 0:
