@@ -2,6 +2,8 @@ import numpy as np
 cimport numpy as np
 import sys
 
+ctypedef np.float_t DTYPE_t
+
 def get_alpha(rho):
     diag = np.arange(rho.shape[0])
     alpha = np.minimum(0., np.diag(rho)[None,:] + np.sum(np.maximum(0., rho), axis=0, keepdims=True) - np.maximum(0., rho) - np.maximum(0., np.diag(rho)[None,:]))
@@ -13,8 +15,8 @@ def get_rho(np.ndarray[DTYPE_t, ndim=2] s_hat, np.ndarray[DTYPE_t, ndim=2] alpha
     cdef int i
     cdef int j
     cdef np.ndarray[DTYPE_t, ndim=2] rho = np.zeros_like(s_hat)
-    cdef np.ndarray[DTYPE_t, ndim=1] idx
-    cdef np.ndarray[DTYPE_t, ndim=1] idx2
+    cdef np.ndarray[np.int_t, ndim=1] idx
+    cdef np.ndarray[np.int_t, ndim=1] idx2
 
     for i in range(rho.shape[0]):
         for j in range(rho.shape[1]):
@@ -33,8 +35,8 @@ def get_gamma(np.ndarray[DTYPE_t, ndim=2] s_hat, np.ndarray[DTYPE_t, ndim=2] alp
     cdef int i
     cdef int j
     cdef np.ndarray[DTYPE_t, ndim=2] gamma = np.zeros_like(s_hat)
-    cdef np.ndarray[DTYPE_t, ndim=1] idx1
-    cdef np.ndarray[DTYPE_t, ndim=1] idx2
+    cdef np.ndarray[np.int_t, ndim=1] idx1
+    cdef np.ndarray[np.int_t, ndim=1] idx2
 
     for i in range(s_hat.shape[0]):
         for k in range(s_hat.shape[1]):
@@ -47,14 +49,14 @@ def get_phi(np.ndarray[DTYPE_t, ndim=2] gamma, np.ndarray[DTYPE_t, ndim=2] r_hat
     cdef int i
     cdef int k
     cdef np.ndarray[DTYPE_t, ndim=2] phi = np.zeros_like(gamma)
-    cdef float term1
-    cdef float term2
+    cdef DTYPE_t term1
+    cdef DTYPE_t term2
 
     for i in range(phi.shape[0]):
         for k in range(phi.shape[0]):
             term1, term2 = np.maximum(0., gamma[k,i] + r_hat[i,k]), np.maximum(0., gamma[k,i])
             if np.isinf(term1) and np.isinf(term2):
-                phi[i,k] = 0.
+                phi[i,k] = 0
             else:
                 phi[i,k] = term1 - term2
     return phi
@@ -101,7 +103,7 @@ def aff_prop(S, iterations=10, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     R = -(S + 0) * wd
     
     diag_idx = np.arange(R.shape[0])
-    R[diag_idx, diag_idx] = 0.
+    R[diag_idx, diag_idx] = 0
 
     r_hat = get_r_hat(R)
     alpha = np.zeros_like(s_hat)
