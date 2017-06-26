@@ -1,5 +1,6 @@
 import theano
 from theano import tensor as T
+from theano.compile.nanguardmode import NanGuardMode
 
 import numpy as np
 import numpy.random as npr
@@ -186,6 +187,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			output_args = [cost]
 			output_args.extend(extras)
 			self._train_fn = theano.function([self.input, self.boxes, target], output_args, updates=updates)
+			# self._train_fn = theano.function([self.input, self.boxes, target], output_args, updates=updates, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
 			print_obj.println('Compiling training function took %.3f seconds' % (time.time() - ti,))
 			ti = time.time();
 			output_args = [cost_test]
