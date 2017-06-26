@@ -118,11 +118,8 @@ def aff_prop(S, iterations=10, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
         rho = damping * rho + (1 - damping) * get_rho(s_hat, alpha, phi)
         gamma = damping * gamma + (1 - damping) * get_gamma(s_hat, alpha, phi)
         
-        e1 = np.nan_to_num(np.sum((rho - rho_old)**2), 0.)
-        e2 = np.nan_to_num(np.sum((gamma - gamma_old)**2), 0.)
-        e3 = np.nan_to_num(np.sum((alpha - alpha_old)**2), 0.)
-        e4 = np.nan_to_num(np.sum((phi - phi_old)**2), 0.)
-        e = e1 + e2 + e3 + e4
-        
+        if itr % print_every == 0:
+            sys.stdout.write('\rIteration {}/{} complete.'.format(itr+1, iterations))
+    
     return get_c(alpha, phi, rho, gamma)
 
