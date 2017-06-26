@@ -1,5 +1,6 @@
 import numpy as np
 import sys
+import pdb
 
 def get_alpha(rho):
     diag = np.arange(rho.shape[0])
@@ -9,79 +10,78 @@ def get_alpha(rho):
     return alpha
 
 def get_rho(s_hat, alpha, phi):
-    # cdef int i
-    # cdef int j
-    # cdef np.ndarray rho = np.zeros_like(s_hat)
-    # cdef np.ndarray idx
-    # cdef np.ndarray idx2
+    '''
+    rho = np.zeros_like(s_hat)
 
-    # for i in range(rho.shape[0]):
-    #     for j in range(rho.shape[1]):
-    #         if i == j:
-    #             idx = np.delete(np.arange(s_hat.shape[1]), i)
-    #             rho[i,j] = s_hat[i,j] - np.max(s_hat[i,idx] + alpha[i,idx]) + np.sum(phi[i,idx])
-    #         else:
-    #             idx = np.delete(np.arange(s_hat.shape[1]), [i,j])
-    #             idx2 = np.delete(np.arange(s_hat.shape[1]), i)
-    #             rho[i,j] = s_hat[i,j] - np.maximum(np.max(s_hat[i,idx] + alpha[i,idx]),
-    #                                         s_hat[i,i] + alpha[i,i] + np.sum(phi[i,idx2]))
-
+    for i in range(rho.shape[0]):
+        for j in range(rho.shape[1]):
+            if i == j:
+                idx = np.delete(np.arange(s_hat.shape[1]), i)
+                rho[i,j] = s_hat[i,j] - np.max(s_hat[i,idx] + alpha[i,idx]) + np.sum(phi[i,idx])
+            else:
+                idx = np.delete(np.arange(s_hat.shape[1]), [i,j])
+                idx2 = np.delete(np.arange(s_hat.shape[1]), i)
+                rho[i,j] = s_hat[i,j] - np.maximum(np.max(s_hat[i,idx] + alpha[i,idx]),
+                                            s_hat[i,i] + alpha[i,i] + np.sum(phi[i,idx2]))
+    foo = rho
+    '''
     tmp = s_hat + alpha
-    tmp = np.repeat(tmp.reshape(tmp.shape + (1,)), s_hat.shape[1], axis=2)
+    tmp = np.repeat(tmp.reshape(tmp.shape + (1,)), (1,1,s_hat.shape[1]))
     idx1, idx2 = np.arange(s_hat.shape[0]), np.arange(s_hat.shape[0])
-    tmp[idx1,:,idx2] += (-np.inf)
+    tmp[idx1,idx2,:] += (-np.inf)
     tmp[:,idx1,idx2] += (-np.inf)
     tmp = np.max(tmp, axis=1)
 
     rho = s_hat - np.maximum(tmp, np.diag(s_hat)[:,None] + np.diag(s_hat)[:,None] + np.sum(phi - np.diag(phi)[:,None], axis=1, keepdims=True))
 
     diag = np.arange(rho.shape[0])
-    rho[diag, diag] = np.diag(s_hat) - np.max(s_hat + alpha + (-np.inf) * np.eye(s_hat.shape[0]), axis=1) + np.sum(phi - np.diag(np.diag(phi)), axis=1)
+    tmp = s_hat + alpha
+    tmp[diag, diag] = -np.inf
+    rho[diag, diag] = np.diag(s_hat) - np.max(tmp, axis=1) + np.sum(phi - np.diag(np.diag(phi)), axis=1)
 
     return rho
 
 def get_gamma(s_hat, alpha, phi):
-    # cdef int i
-    # cdef int j
-    # cdef np.ndarray gamma = np.zeros_like(s_hat)
-    # cdef np.ndarray[DTYPE_t, ndim=1] idx1
-    # cdef np.ndarray[DTYPE_t, ndim=1] idx2
+    '''
+    gamma = np.zeros_like(s_hat)
 
-    # for i in range(s_hat.shape[0]):
-    #     for k in range(s_hat.shape[1]):
-    #         idx1 = np.delete(np.arange(s_hat.shape[1]), i)
-    #         idx2 = np.delete(np.arange(s_hat.shape[1]), [i,k])
-    #         gamma[i,k] = s_hat[i,i] + alpha[i,i] - np.max(s_hat[i,idx1] + alpha[i,idx1]) + np.sum(phi[i,idx2])
-
+    for i in range(s_hat.shape[0]):
+        for k in range(s_hat.shape[1]):
+            idx1 = np.delete(np.arange(s_hat.shape[1]), i)
+            idx2 = np.delete(np.arange(s_hat.shape[1]), [i,k])
+            gamma[i,k] = s_hat[i,i] + alpha[i,i] - np.max(s_hat[i,idx1] + alpha[i,idx1]) + np.sum(phi[i,idx2])
+    foo = gamma
+    '''
     tmp = phi
     tmp = np.repeat(tmp.reshape(tmp.shape + (1,)), phi.shape[1], axis=2)
     idx1, idx2 = np.arange(phi.shape[0]), np.arange(phi.shape[0])
-    tmp[idx1,:,idx2] *= 0
+    tmp[idx1,idx2,:] *= 0
     tmp[:,idx1,idx2] *= 0
     tmp = np.sum(tmp, axis=1)
+    
+    tmp2 = s_hat + alpha
+    tmp2[idx1, idx1] = -np.inf
 
-    gamma = np.diag(s_hat)[:,None] + np.diag(alpha)[:,None] - np.max(s_hat + alpha + (-np.inf) * np.eye(s_hat.shape[0]), axis=1) + tmp
+    gamma = np.diag(s_hat)[:,None] + np.diag(alpha)[:,None] - np.max(tmp2, axis=1)[:,None] + tmp
 
     return gamma
 
-def get_phi(np.ndarray gamma, np.ndarray r_hat):
-    # cdef int i
-    # cdef int k
-    # cdef np.ndarray phi = np.zeros_like(gamma)
-    # cdef float term1
-    # cdef float term2
+def get_phi(gamma, r_hat):
+    '''
+    phi = np.zeros_like(gamma)
 
-    # for i in range(phi.shape[0]):
-    #     for k in range(phi.shape[0]):
-    #         term1, term2 = np.maximum(0., gamma[k,i] + r_hat[i,k]), np.maximum(0., gamma[k,i])
-    #         if np.isinf(term1) and np.isinf(term2):
-    #             phi[i,k] = 0.
-    #         else:
-    #             phi[i,k] = term1 - term2
+    for i in range(phi.shape[0]):
+        for k in range(phi.shape[0]):
+            term1, term2 = np.maximum(0., gamma[k,i] + r_hat[i,k]), np.maximum(0., gamma[k,i])
+            if np.isinf(term1) and np.isinf(term2):
+                phi[i,k] = 0.
+            else:
+                phi[i,k] = term1 - term2
+    foo = phi
+    '''
 
     phi = np.maximum(0., gamma.transpose() + r_hat) - np.maximum(0., gamma.transpose())
     np.nan_to_num(phi, 0.)
-
     return phi
 
 def get_s_hat(s, wa, wb, wc):
@@ -118,7 +118,7 @@ def get_c(alpha, phi, rho, gamma):
         c[i,idx] = 1.
     return c
 
-def aff_prop(S, iterations=10, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
+def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
     
     s_hat = get_s_hat(S, wa, wb, wc)
@@ -142,9 +142,16 @@ def aff_prop(S, iterations=10, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
         phi = damping * phi + (1 - damping) * get_phi(gamma, r_hat)
         rho = damping * rho + (1 - damping) * get_rho(s_hat, alpha, phi)
         gamma = damping * gamma + (1 - damping) * get_gamma(s_hat, alpha, phi)
-        
-        if itr % print_every == 0:
-            sys.stdout.write('\r Iteration {}/{}.'.format(itr, iterations))
+       
+        err = np.mean(np.nan_to_num(alpha - alpha_old, 0.)**2) + \
+		np.mean(np.nan_to_num(phi - phi_old, 0.)**2) + \
+		np.mean(np.nan_to_num(rho - rho_old, 0.)**2) + \
+		np.mean(np.nan_to_num(gamma - gamma_old, 0.)**2)
+        if err < tol:
+            break;
+
+        if (itr + 1) % print_every == 0:
+            sys.stdout.write('\r Iteration {}/{}.'.format(itr + 1, iterations))
         
     return get_c(alpha, phi, rho, gamma)
 
