@@ -1,9 +1,9 @@
 import numpy as np
 from ap_nms import *
 import pycuda.driver as cuda
-import pycuda.init
+import pycuda.autoinit
 from pycuda.compiler import SourceModule
-import pycuda.gpuarray as GPUarray
+import pycuda.gpuarray as gpuarray
 
 _cuda_code = '''
 #include <stdio.h>
@@ -179,14 +179,14 @@ _ap_func = _module.get_function('affinity_propagation')
 def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
 
-    s_hat = get_s_hat(S, wa, wb, wc)
+    s_hat = get_s_hat(S, wa, wb, wc).astype(np.float32)
     c = np.eye(S.shape[0])
-    R = -(S + 0) * wd
+    R = -(S + 0.) * wd
     
     diag_idx = np.arange(R.shape[0])
     R[diag_idx, diag_idx] = 0.
 
-    r_hat = get_r_hat(R)
+    r_hat = get_r_hat(R).astype(np.float32)
     alpha = np.zeros_like(s_hat)
     gamma = np.zeros_like(s_hat)
     rho = np.zeros_like(s_hat)
@@ -196,7 +196,6 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
 
     s_hat_d, r_hat_d, alpha_d = gpuarray.to_gpu(s_hat), gpuarray.to_gpu(r_hat), gpuarray.to_gpu(alpha)
     gamma_d, rho_d, phi_d = gpuarray.to_gpu(gamma), gpuarray.to_gpu(rho), gpuarray.to_gpu(phi)
-
     grid = (s_hat.shape[0], 1, 1)
     block = (s_hat.shape[1], 1, 1)
 
@@ -206,13 +205,13 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
     gamma_ptr, _ = get_ptr(gamma_d)
     rho_ptr, _ = get_ptr(rho_d)
     phi_ptr, _ = get_ptr(phi_d)
-
-    for itr in range(iterations):
-        _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(1), np.float32(damping), block=block, grid=grid)
+    pdb.set_trace()
+    _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(iterations), np.float32(damping), block=block, grid=grid)
+    #for itr in range(iterations):
+     #   _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(1), np.float32(damping), block=block, grid=grid)
 
         # ll = gpuarray.sum(alpha_d + gamma_d + rho_d + phi_d).get()
-
-    return np.nan_to_num((alpha_d + gamma_d + rho_d + phi_d).get(), 0.)
+    return get_c(alpha_d.get(), phi_d.get(), rho_d.get(), gamma_d.get())
 
 
 

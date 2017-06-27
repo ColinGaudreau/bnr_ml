@@ -98,15 +98,6 @@ def get_r_hat(r):
     r_hat[:-1,:-1] = r
     return r_hat
 
-def get_r(S, c):
-    r = np.zeros_like(S)
-    idx = np.nonzero(np.diag(c))[0]
-    for i in idx:
-        for j in idx:
-            if i != S.shape[0] and j != S.shape[0]:
-                r[i,j] = -(S[i,j] + 1)
-    return r
-
 def get_c(alpha, phi, rho, gamma):
     c = np.zeros_like(alpha)
     message = alpha + rho + phi + gamma
