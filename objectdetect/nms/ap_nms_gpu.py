@@ -117,6 +117,8 @@ __device__ void set_gamma(Matrix *gamma, Matrix *s_hat, Matrix *alpha, Matrix *p
         }
     }
     val -= max_val;
+    if(row == col)
+        val = 0;
     gamma->data[col + row * gamma->shape.dim2] = damping * gamma->data[col + row * gamma->shape.dim2] + (1 - damping) * val;
 }
 
@@ -125,7 +127,7 @@ __device__ void set_phi(Matrix *phi, Matrix *gamma, Matrix *r_hat, int row, int 
     float val1 = max(0., gamma->data[row + col * gamma->shape.dim2] + r_hat->data[col + row * r_hat->shape.dim2]); 
     float val2 = max(0., gamma->data[row + col * gamma->shape.dim2]);
     float val = val1 - val2;
-    if(isnan(val))
+    if(isnan(val) || row == col)
         val = 0;
     phi->data[col + row * phi->shape.dim2] = damping * phi->data[col + row * phi->shape.dim2] + (1 - damping) * val;
 }
@@ -178,10 +180,9 @@ _ap_func = _module.get_function('affinity_propagation')
 
 def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
-
     s_hat = get_s_hat(S, wa, wb, wc).astype(np.float32)
     c = np.eye(S.shape[0])
-    R = -(S + 0.) * wd
+    R = -(S + 1.) * wd
     
     diag_idx = np.arange(R.shape[0])
     R[diag_idx, diag_idx] = 0.
@@ -205,13 +206,13 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
     gamma_ptr, _ = get_ptr(gamma_d)
     rho_ptr, _ = get_ptr(rho_d)
     phi_ptr, _ = get_ptr(phi_d)
-    pdb.set_trace()
+    
     _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(iterations), np.float32(damping), block=block, grid=grid)
     #for itr in range(iterations):
      #   _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(1), np.float32(damping), block=block, grid=grid)
 
-        # ll = gpuarray.sum(alpha_d + gamma_d + rho_d + phi_d).get()
-    return get_c(alpha_d.get(), phi_d.get(), rho_d.get(), gamma_d.get())
+    # ll = gpuarray.sum(alpha_d + gamma_d + rho_d + phi_d).get()
+    return get_labels(alpha_d.get(), phi_d.get(), rho_d.get(), gamma_d.get())
 
 
 

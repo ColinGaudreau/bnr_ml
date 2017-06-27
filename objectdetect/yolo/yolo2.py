@@ -349,6 +349,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			box = utils.BoundingBox(*coord.tolist(), confidence=conf, cls=cls)
 			boxes.append(box)
 
+		boxes = [b * old_size for b in boxes]
 		return boxes
 
 	def _get_cost2(

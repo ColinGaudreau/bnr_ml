@@ -55,7 +55,7 @@ def _ap(precision, recall):
 	index = np.asarray([i + 1 for i in range(rec.size - 1) if np.abs(rec[i] - rec[i+1]) > 1e-5])
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
 
-def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
+def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	aps = {}
 	for _, label in num_to_label.iteritems():
 		aps[label] = []
@@ -68,7 +68,7 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 		# get all object types in image
 		img_classes = np.unique([o['label'] for o in annotation['annotations']]).tolist()
 
-		preds = detector.detect(imread(annotation['image']), **detector_args)
+		preds = detector.detect(imread(loc + annotation['image']), **detector_args)
 		for cls in img_classes:
 			labels = [label for label in annotation['annotations'] if label['label'] == cls]
 
@@ -192,7 +192,7 @@ def _f1_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 
 	return 2*tp / (2*tp + fp + max(len(labels) - tp, 0))
 
-def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), detector_args={}):
+def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	f1_scores = []
 	detector_args.update({'num_to_label': num_to_label})
 	
@@ -203,7 +203,7 @@ def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, pri
 		# get all object types in image
 		img_classes = np.unique([o['label'] for o in annotation['annotations']]).tolist()
 
-		boxes = detector.detect(imread(annotation['image']), **detector_args)
+		boxes = detector.detect(imread(loc + annotation['image']), **detector_args)
 
 		if len(boxes) == 0:
 			f1_scores.append(0.)

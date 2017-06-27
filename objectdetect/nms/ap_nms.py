@@ -98,9 +98,20 @@ def get_r_hat(r):
     r_hat[:-1,:-1] = r
     return r_hat
 
-def get_c(alpha, phi, rho, gamma):
-    c = np.zeros_like(alpha)
-    message = alpha + rho + phi + gamma
+def get_labels(alpha, phi, rho, gamma):
+    labels = np.zeros(alpha.shape[0] - 1, dtype=np.int32)
+    message = alpha + rho
+    diag = np.arange(alpha.shape[0] - 1)
+    message[diag, diag] += np.sum(phi[:-1,:-1] + gamma[:-1,:-1], axis=1)
+    
+    examplars = np.where(np.diag(message) > 0)[0]
+
+    # message = np.nan_to_num(alpha + rho + phi + gamma, 0.)
+    # examplars = np.where(np.diag(message) > 0)[0]
+    for k in range(labels.size):
+        labels[k] = examplars[np.argmax(message[k,examplars])]
+    return labels
+'''
     diag_idx = np.arange(c.shape[0])
     
     message = np.nan_to_num(message, 0.)
@@ -108,6 +119,7 @@ def get_c(alpha, phi, rho, gamma):
         idx = np.argmax(message[i,:])
         c[i,idx] = 1.
     return c
+'''
 
 def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
