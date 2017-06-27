@@ -387,6 +387,7 @@ class SingleShotDetector(BaseLearningObject):
 			# Add the negative examples to the costs.
 			cost_noobj_fmap = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
 			cost_noobj_fmap = cost_noobj_fmap[iou_idx_sorted.nonzero()].sum()
+			
 			#
 			# NEW STUFF
 			#
