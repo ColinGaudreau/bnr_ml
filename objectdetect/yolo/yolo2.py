@@ -275,7 +275,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 
 
-	def detect(self, im, thresh=0.75, overlap=0.5, num_to_label=None):
+	def detect(self, im, thresh=0.75, overlap=0.5, num_to_label=None, return_iou=False):
 		im = format_image(im, dtype=theano.config.floatX)
 
 		old_size = im.shape[:2]
@@ -335,10 +335,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 				),
 				axis=1
 			)
-			
-			self._detect_fn = theano.function([self.input, thresh_var], pred)
 
-		output = self._detect_fn(im, thresh)
+			iou_matrix = utils.iou_matrix(pred)
+			
+			self._detect_fn = theano.function([self.input, thresh_var], pred, iou_matrix)
+
+		output, iou_matrix = self._detect_fn(im, thresh)
 
 		boxes = []
 		for i in range(output.shape[0]):
@@ -349,7 +351,12 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			box = utils.BoundingBox(*coord.tolist(), confidence=conf, cls=cls)
 			boxes.append(box)
 
-		return boxes
+		boxes = [b * old_size for b in boxes]
+
+		if return_iou:
+			return boxes, iou_matrix
+		else:
+			return boxes
 
 	def _get_cost2(
 			self,

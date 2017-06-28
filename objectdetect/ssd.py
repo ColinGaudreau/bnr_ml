@@ -67,7 +67,8 @@ class SingleShotDetector(BaseLearningObject):
 		num_classes,
 		ratios=[(1,1),(1./np.sqrt(2),np.sqrt(2)),(np.sqrt(2),1./np.sqrt(2)),(1./np.sqrt(3),np.sqrt(3)),(np.sqrt(3),1./np.sqrt(3)),(1.2,1.2)],
 		smin=0.2,
-		smax=0.95
+		smax=0.95,
+		seed=1991
 	):
 		assert('detection' in network and 'input' in network)
 		super(SingleShotDetector, self).__init__()	
@@ -79,6 +80,7 @@ class SingleShotDetector(BaseLearningObject):
 		self.input = network['input'].input_var
 		self.input_shape = network['input'].shape[-2:]
 		self._hyperparameters = [{'ratios': ratios, 'smin': smin, 'smax': smax}]
+		self._random_stream = T.shared_randomstreams.RandomStream(seed=seed)
 
 		# build default map
 		self._build_default_maps()
@@ -372,21 +374,29 @@ class SingleShotDetector(BaseLearningObject):
 
 			# find negative examples
 			iou_default = iou_default.reshape((-1,))
-			iou_idx_sorted = T.argsort(iou_default)[::-1]
-			iou_st_min = iou_default < min_iou
+			# iou_idx_sorted = T.argsort(iou_default)[::-1]
+
+			# iou_st_min = iou_default < min_iou
+			iou_st_min = T.bitwise_and(iou_default >= 0.1, iou_default < min_iou)
 			
 			# Choose index for top boxes whose overlap is smaller than the min overlap.
 			pos_size = iou_gt_min[iou_gt_min.nonzero()].size
 			neg_size = pos_size * 3 # ratio of 3 to 1
 			#neg_size = 10
-			iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
-			neg_size = iou_idx_sorted.size
+
+			idx_neg = T.arange(iou_default.shape[0])[iou_st_min.nonzero()]
+			replace = T.le(T.idx_neg.shape[0], neg_size)
+			idx_neg = self._random_stream.choice((neg_size,), a=idx_neg, replace=replace)
+
+			# iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
+			# neg_size = iou_idx_sorted.size
 
 			neg_size, pos_size = T.maximum(1., neg_size), T.maximum(1., pos_size)
 
 			# Add the negative examples to the costs.
 			cost_noobj_fmap = -(neg_example * T.log(fmap[:,:,-(self.num_classes + 1):])).sum(axis=2).reshape((-1,))
-			cost_noobj_fmap = cost_noobj_fmap[iou_idx_sorted.nonzero()].sum()
+			cost_noobj_fmap = cost_noobj_fmap[idx_neg].sum()
+			
 			#
 			# NEW STUFF
 			#
