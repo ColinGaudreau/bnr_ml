@@ -80,7 +80,7 @@ class SingleShotDetector(BaseLearningObject):
 		self.input = network['input'].input_var
 		self.input_shape = network['input'].shape[-2:]
 		self._hyperparameters = [{'ratios': ratios, 'smin': smin, 'smax': smax}]
-		self._random_stream = T.shared_randomstreams.RandomStream(seed=seed)
+		self._random_stream = T.shared_randomstreams.RandomStreams(seed=seed)
 
 		# build default map
 		self._build_default_maps()
@@ -385,8 +385,8 @@ class SingleShotDetector(BaseLearningObject):
 			#neg_size = 10
 
 			idx_neg = T.arange(iou_default.shape[0])[iou_st_min.nonzero()]
-			replace = T.le(T.idx_neg.shape[0], neg_size)
-			idx_neg = self._random_stream.choice((neg_size,), a=idx_neg, replace=replace)
+			replace = T.le(idx_neg.shape[0], neg_size)
+			idx_neg = theano.ifelse.ifelse(idx_neg.shape[0] > 0, self._random_stream.choice((neg_size,), a=idx_neg, replace=replace), T.arange(0))
 
 			# iou_idx_sorted = iou_idx_sorted[iou_st_min[iou_idx_sorted].nonzero()][:neg_size]
 			# neg_size = iou_idx_sorted.size
