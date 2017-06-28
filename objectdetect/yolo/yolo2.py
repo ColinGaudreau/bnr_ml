@@ -338,7 +338,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 
 			iou_matrix = utils.iou_matrix(pred)
 			
-			self._detect_fn = theano.function([self.input, thresh_var], pred, iou_matrix)
+			self._detect_fn = theano.function([self.input, thresh_var], [pred, iou_matrix])
 
 		output, iou_matrix = self._detect_fn(im, thresh)
 

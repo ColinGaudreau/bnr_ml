@@ -16,10 +16,15 @@ class StreamPrinter(object):
 	def println(self, str):
 		for stream in self.streams:
 			stream.write('%s\n' % str)
-
+	def write(self, str):
+		for stream in self.streams:
+			stream.write('%s' % str)
 	def close(self):
 		for stream in self.streams:
 			stream.close()
+	def flush(self):
+		for stream in self.streams:
+			stream.flush()
 
 def save_all_layers(network_output, dirname):
 	layers = lasagne.layers.get_all_layers(network_output)
