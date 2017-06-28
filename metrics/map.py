@@ -211,7 +211,8 @@ def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, pri
 			f1_scores.append(_f1_per_box(boxes, annotation['annotations'], min_iou=min_iou))
 
 		if verbose:
-			print_obj.println('Annotation %d complete, mean f1 score so far: %.3f' % (i, np.mean(f1_scores)))
+			print_obj.flush()
+			print_obj.write('\rAnnotation %d complete, mean f1 score so far: %.3f' % (i, np.mean(f1_scores)))
 
 	return np.mean(f1_scores)
 

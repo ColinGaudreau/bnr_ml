@@ -210,7 +210,7 @@ def draw_boxes(im, boxes, color=(255,255,255)):
 	unique_labels = np.unique([box.cls for box in boxes]).tolist()
 	if isinstance(color, tuple):
 		for label in unique_labels:
-			colors[label] = tuple(np.int_(255 * npr.rand(3,)))
+			colors[label] = tuple(np.int_(150 + 105 * npr.rand(3,)))
 	elif isinstance(color, dict):
 		colors = color
 
@@ -274,14 +274,14 @@ def draw_coord(im, coords, color=(255,255,255), label_map=None):
 def iou_matrix(preds):
 	idx1, idx2 = meshgrid(T.arange(preds.shape[0]), T.arange(preds.shape[0]))
 	preds1, preds2 = preds[idx1,:], preds[idx2,:]
-
-	xi, yi = T.maximum(preds1[:,:,0], preds2[:,:,0]), T.maximum(preds1[1], preds2[1])
-	xf, yf = T.minimum(preds1[:,:,0]+preds1[:,:,2], preds2[:,:,0]+preds2[:,:,2]), T.minimum(preds1[:,:,1]+preds1[:,:,3], preds2[:,:,1]+preds2[:,;,3])
+	
+	xi, yi = T.maximum(preds1[:,:,0], preds2[:,:,0]), T.maximum(preds1[:,:,1], preds2[:,:,1])
+	xf, yf = T.minimum(preds1[:,:,0]+preds1[:,:,2], preds2[:,:,0]+preds2[:,:,2]), T.minimum(preds1[:,:,1]+preds1[:,:,3], preds2[:,:,1]+preds2[:,:,3])
 
 	w, h = T.maximum(xf - xi, 0.) ,T.maximum(yf - yi, 0.)
 
 	isec = w * h
-	u = preds1[:,:,2] * preds1[:,:,3] + preds2[:,:,2] * preds2[:,:,3] - sec
+	u = preds1[:,:,2] * preds1[:,:,3] + preds2[:,:,2] * preds2[:,:,3] - isec
 
 	return isec / u
 
