@@ -6,7 +6,7 @@ import numpy.random as npr
 from bnr_ml.utils.helpers import StreamPrinter, meshgrid, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_abs, smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
-from bnr_ml.objectdetect.nms import nms
+from bnr_ml.objectdetect.nms.nms import nms
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 from lasagne import layers
