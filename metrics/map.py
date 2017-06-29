@@ -40,10 +40,10 @@ def _ap_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 		else:
 			fp[i] += 1.
 	
-	tp, fp = np.cumsum(tp), np.cumsum(fp)
+	# tp, fp = np.cumsum(tp), np.cumsum(fp)
 	# recall = tp / num_labels if num_labels > 0 else tp * 0
 	# precision = tp / (tp + fp)
-	return scores[idx], tp, fp
+	return scores[idx], tp, fp, num_labels
 
 def _ap(precision, recall):
 	prec, rec = np.zeros(precision.size + 2), np.zeros(recall.size + 2)
@@ -53,12 +53,12 @@ def _ap(precision, recall):
 	for i in range(prec.size - 2, -1, -1):
 		prec[i] = max(prec[i], prec[i+1])
 	index = np.asarray([i + 1 for i in range(rec.size - 1) if np.abs(rec[i] - rec[i+1]) > 1e-5])
-	return ((rec[index] - rec[index - 1]) * prec[index]).sum()
+	return ((rec[index] - rec[index - 1]) * prec[index]).sum(), prec, rec
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	aps = {}
 	for _, label in num_to_label.iteritems():
-		aps[label] = {'scores': [], 'tp': [], 'fp': []}
+		aps[label] = {'scores': [], 'tp': [], 'fp': [], 'n_labels': []}
 	detector_args.update({'num_to_label': num_to_label})
 	
 	if verbose:
@@ -79,10 +79,11 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 					break
 
 			if in_pred:
-				scores, tp, fp = _ap_per_box([box for box in preds if box.cls == cls], labels)
+				scores, tp, fp, n_labels = _ap_per_box([box for box in preds if box.cls == cls], labels)
 				aps[cls]['scores'].extend(scores.tolist())
 				aps[cls]['tp'].extend(tp.tolist())
 				aps[cls]['fp'].extend(fp.tolist())
+				aps[cls]['n_labels'].append(n_labels)
 			# else:
 				# aps[cls]['ap'].append(0.)
 
@@ -97,14 +98,15 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 
 	class_ap = {}
 	for key, ap in aps.iteritems():
-		scores, tp, fp = ap['scores'], ap['tp'], ap['fp']
+		scores, tp, fp, n_labels = np.asarray(ap['scores']), np.asarray(ap['tp']), np.asarray(ap['fp']), np.sum(ap['n_labels'])
 		idx = np.argsort(scores)[::-1]
+		pdb.set_trace()
 		tp, fp = tp[idx], fp[idx]
 		tp, fp = np.cumsum(tp), np.cumsum(fp)
-		recall = tp / num_labels if num_labels > 0 else tp * 0
+		recall = tp / n_labels if n_labels > 0 else np.zeros_like(tp)
 		precision = tp / (tp + fp)
-		class_ap['ap'] = _ap(precision, recall)
-		# ap['ap'] = np.mean(ap['ap'])
+		a, precision, recall = _ap(precision, recall)
+		class_ap[key] = {'ap': a, 'precision': precision, 'recall': recall}
 	return class_ap
 
 def _precision_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
