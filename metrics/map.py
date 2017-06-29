@@ -43,7 +43,7 @@ def _ap_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
 	recall = tp / num_labels if num_labels > 0 else tp * 0
 	precision = tp / (tp + fp)
-	return _ap(precision, recall)
+	return _ap(precision, recall), precision, recall
 
 def _ap(precision, recall):
 	prec, rec = np.zeros(precision.size + 2), np.zeros(recall.size + 2)
@@ -58,7 +58,7 @@ def _ap(precision, recall):
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	aps = {}
 	for _, label in num_to_label.iteritems():
-		aps[label] = []
+		aps[label] = {'ap': [], 'precision': [], 'recall': []}
 	detector_args.update({'num_to_label': num_to_label})
 	
 	if verbose:
@@ -79,18 +79,25 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 					break
 
 			if in_pred:
-				aps[cls].append(_ap_per_box([box for box in preds if box.cls == cls], labels))
+				ap, prec, rec = _ap_per_box([box for box in preds if box.cls == cls], labels)
+				aps[cls]['ap'].append(ap)
+				aps[cls]['precision'].extend(prec.tolist())
+				aps[cls]['recall'].extend(rec.tolist())
 			else:
-				aps[cls].append(0.)
+				aps[cls]['ap'].append(0.)
 
 		if verbose:
-			mean_ap = np.mean([np.mean(ap) for _, ap in aps.iteritems() if len(ap) > 0])
-			print_obj.println('Annotation %d complete, mAP so far: %.3f' % (i, mean_ap))
+			mean_ap = np.mean([np.mean(ap['ap']) for _, ap in aps.iteritems() if len(ap['ap']) > 0])
+			print_obj.flush()
+			print_obj.write('\rAnnotation %d complete, mAP so far: %.3f' % (i, mean_ap))
 
-	class_ap = {}
+	if verbose:
+		print_obj.println('')
+
+	# class_ap = {}
 	for key, ap in aps.iteritems():
-		class_ap[key] = np.mean(ap)
-	return class_ap
+		ap['ap'] = np.mean(ap['ap'])
+	return aps
 
 def _precision_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 	'''
@@ -154,7 +161,7 @@ def precision(detector, annotations, num_to_label, verbose=True, print_obj=Strea
 
 	return np.mean(precisions)
 
-def _f1_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
+def _f1_per_box(boxes, labels, beta=1., min_iou=0.5, return_pr_curve=False):
 	'''
 	Calculate average precision given predictions, labels, class.
 
@@ -190,9 +197,9 @@ def _f1_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 		else:
 			fp += 1.
 
-	return 2*tp / (2*tp + fp + max(len(labels) - tp, 0))
+	return (1 + beta**2)*tp / ((1+beta**2)*tp + fp + (beta**2)*max(len(labels) - tp, 0))
 
-def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
+def f1_score(detector, annotations, num_to_label, beta=1., min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	f1_scores = []
 	detector_args.update({'num_to_label': num_to_label})
 	
@@ -208,7 +215,7 @@ def f1_score(detector, annotations, num_to_label, min_iou=0.5, verbose=True, pri
 		if len(boxes) == 0:
 			f1_scores.append(0.)
 		else:
-			f1_scores.append(_f1_per_box(boxes, annotation['annotations'], min_iou=min_iou))
+			f1_scores.append(_f1_per_box(boxes, annotation['annotations'], beta=beta, min_iou=min_iou))
 
 		if verbose:
 			print_obj.flush()

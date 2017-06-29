@@ -137,6 +137,9 @@ __global__ void affinity_propagation(Matrix *s_hat, Matrix *r_hat, Matrix *rho, 
     int row, col, i;
     row = blockIdx.x;
     col = threadIdx.x;
+   
+    if(col >= s_hat->shape.dim2 || row >= s_hat->shape.dim1)
+        return;
     
     for(i=0; i<iterations; i++)
     {
@@ -197,6 +200,7 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
 
     s_hat_d, r_hat_d, alpha_d = gpuarray.to_gpu(s_hat), gpuarray.to_gpu(r_hat), gpuarray.to_gpu(alpha)
     gamma_d, rho_d, phi_d = gpuarray.to_gpu(gamma), gpuarray.to_gpu(rho), gpuarray.to_gpu(phi)
+    
     grid = (s_hat.shape[0], 1, 1)
     block = (s_hat.shape[1], 1, 1)
 
@@ -207,7 +211,10 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
     rho_ptr, _ = get_ptr(rho_d)
     phi_ptr, _ = get_ptr(phi_d)
     
-    _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(iterations), np.float32(damping), block=block, grid=grid)
+    try:
+        _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(iterations), np.float32(damping), block=block, grid=grid)
+    except:
+        pdb.set_trace()
     #for itr in range(iterations):
      #   _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(1), np.float32(damping), block=block, grid=grid)
 
