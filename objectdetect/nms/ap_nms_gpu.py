@@ -181,7 +181,7 @@ _module = SourceModule(_cuda_code)
 
 _ap_func = _module.get_function('affinity_propagation')
 
-def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
+def affinity_propagation_gpu(preds, affinity, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.], **kwargs):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
     s_hat = get_s_hat(S, wa, wb, wc).astype(np.float32)
     c = np.eye(S.shape[0])
@@ -219,7 +219,11 @@ def affinity_propagation_gpu(S, iterations=10, tol=1e-5, damping=0.5, print_ever
      #   _ap_func(s_hat_ptr, r_hat_ptr, rho_ptr, alpha_ptr, gamma_ptr, phi_ptr, np.int32(1), np.float32(damping), block=block, grid=grid)
 
     # ll = gpuarray.sum(alpha_d + gamma_d + rho_d + phi_d).get()
-    return get_labels(alpha_d.get(), phi_d.get(), rho_d.get(), gamma_d.get())
+    labels = np.unique(get_labels(alpha_d.get(), phi_d.get(), rho_d.get(), gamma_d.get()))
+    if labels[-1] == len(preds):
+        labels = labels[:-1]
+
+    return np.asarray(boxes)[labels].tolist()
 
 
 

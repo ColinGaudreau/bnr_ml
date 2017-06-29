@@ -1,9 +1,13 @@
 from bnr_ml.objectdetect.utils import BoundingBox
 import copy
 import numpy as np
+import ap_nms
+import ap_nms_gpu
 
 METHOD_VIOLA_JONES = 'viola-jones'
 METHOD_GREEDY = 'greedy'
+METHOD_AP = 'ap'
+METHOD_AP_GPU = 'ap-gpu'
 
 def nms(boxes, *args, **kwargs):
 	'''
@@ -15,24 +19,42 @@ def nms(boxes, *args, **kwargs):
 		n_apply = kwargs['n_apply']
 
 	classes = list(set([box.cls for box in boxes]))
-	boxes = copy.deepcopy(boxes)
+	boxes = np.asarray(copy.deepcopy(boxes))
 
 	method = METHOD_VIOLA_JONES
 	if 'method' in kwargs:
 		method = kwargs['method']
+
+	uses_iou = False
 	
 	if method.lower() == METHOD_VIOLA_JONES:
 		detect_fn = lambda boxes, *args, **kwargs: _viola_jones(boxes, *args, **kwargs)
 	elif method.lower() == METHOD_GREEDY:
 		detect_fn = lambda boxes, *args, **kwargs: _greedy(boxes, *args, **kwargs)
+	elif method.lower() == METHOD_AP:
+		assert('iou' in kwargs)
+		detect_fn = lambda boxes, *args, **kwargs: ap_nms.affinity_propagation(boxes, *args, **kwargs)
+		uses_iou = True
+	elif method.lower() == METHOD_AP_GPU:
+		assert('iou' in kwargs)
+		detect_fn = lambda boxes, *args, **kwargs: ap_nms_gpu.affinity_propagation(boxes, *args, **kwargs)
+		uses_iou = True
 	else:
 		raise Exception('Method "{}" not valid.'.format(method))
 
+	idx = np.arange(boxes.size)
 	for _ in range(n_apply):
 		objs = []
 		for cls in classes:
-			boxes_per_cls = [box for box in boxes if box.cls == cls]
-			objs.extend(detect_fn(boxes_per_cls, *args, **kwargs))
+			idx_cls = idx[np.asarray([box.cls == cls for box in boxes])]
+			if uses_iou:
+				idx_row, idx_col = np.meshgrid(idx_cls, idx_cls)
+				affinity = kwargs['iou'][idx_row, idx_col] - 1.
+				new_boxes = detect_fn(boxes[idx_cls].tolist(), affinity, *args, **kwargs)
+			else:
+				new_boxes = detect_fn(boxes[idx_cls].tolist(), *args, **kwargs)
+
+			objs.extend(new_boxes)
 		boxes = objs
 	return boxes
 

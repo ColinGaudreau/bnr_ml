@@ -121,7 +121,7 @@ def get_labels(alpha, phi, rho, gamma):
     return c
 '''
 
-def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
+def affinity_propagation(boxes, affinity, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.], **kwargs):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
     
     s_hat = get_s_hat(S, wa, wb, wc)
@@ -148,13 +148,17 @@ def aff_prop(S, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.
         rho = damping * rho + (1 - damping) * get_rho(s_hat, alpha, phi)
         gamma = damping * gamma + (1 - damping) * get_gamma(s_hat, alpha, phi)
        
-        ll = np.nan_to_num(alpha + phi + rho + gamma, 0.).sum() # check log likelihood
+        # ll = np.nan_to_num(alpha + phi + rho + gamma, 0.).sum() # check log likelihood
 
-        if (ll - ll_old) < tol:
-            break;
+        # if (ll - ll_old) < tol:
+        #     break;
 
         if (itr + 1) % print_every == 0:
             sys.stdout.write('\r Iteration {}/{}.'.format(itr + 1, iterations))
-        
-    return get_c(alpha, phi, rho, gamma)
+    
+    labels = get_labels(alpha, phi, rho, gamma)
+    if labels[-1] == len(boxes):
+        labels = labels[:-1]
+
+    return np.asarray(boxes)[labels].tolist()
 
