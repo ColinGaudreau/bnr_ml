@@ -41,9 +41,9 @@ def _ap_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 			fp[i] += 1.
 	
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
-	recall = tp / num_labels if num_labels > 0 else tp * 0
-	precision = tp / (tp + fp)
-	return _ap(precision, recall), precision, recall
+	# recall = tp / num_labels if num_labels > 0 else tp * 0
+	# precision = tp / (tp + fp)
+	return scores[idx], tp, fp
 
 def _ap(precision, recall):
 	prec, rec = np.zeros(precision.size + 2), np.zeros(recall.size + 2)
@@ -58,7 +58,7 @@ def _ap(precision, recall):
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	aps = {}
 	for _, label in num_to_label.iteritems():
-		aps[label] = {'ap': [], 'precision': [], 'recall': []}
+		aps[label] = {'scores': [], 'tp': [], 'fp': []}
 	detector_args.update({'num_to_label': num_to_label})
 	
 	if verbose:
@@ -79,25 +79,33 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 					break
 
 			if in_pred:
-				ap, prec, rec = _ap_per_box([box for box in preds if box.cls == cls], labels)
-				aps[cls]['ap'].append(ap)
-				aps[cls]['precision'].extend(prec.tolist())
-				aps[cls]['recall'].extend(rec.tolist())
-			else:
-				aps[cls]['ap'].append(0.)
+				scores, tp, fp = _ap_per_box([box for box in preds if box.cls == cls], labels)
+				aps[cls]['scores'].extend(scores.tolist())
+				aps[cls]['tp'].extend(tp.tolist())
+				aps[cls]['fp'].extend(fp.tolist())
+			# else:
+				# aps[cls]['ap'].append(0.)
 
 		if verbose:
-			mean_ap = np.mean([np.mean(ap['ap']) for _, ap in aps.iteritems() if len(ap['ap']) > 0])
+			# mean_ap = np.mean([np.mean(ap['ap']) for _, ap in aps.iteritems() if len(ap['ap']) > 0])
 			print_obj.flush()
-			print_obj.write('\rAnnotation %d complete, mAP so far: %.3f' % (i, mean_ap))
+			print_obj.write('\rAnnotation %d/%d' % (i+1,len(annotations)))
+			# print_obj.write('\rAnnotation %d complete, mAP so far: %.3f' % (i, mean_ap))
 
 	if verbose:
 		print_obj.println('')
 
-	# class_ap = {}
+	class_ap = {}
 	for key, ap in aps.iteritems():
-		ap['ap'] = np.mean(ap['ap'])
-	return aps
+		scores, tp, fp = ap['scores'], ap['tp'], ap['fp']
+		idx = np.argsort(scores)[::-1]
+		tp, fp = tp[idx], fp[idx]
+		tp, fp = np.cumsum(tp), np.cumsum(fp)
+		recall = tp / num_labels if num_labels > 0 else tp * 0
+		precision = tp / (tp + fp)
+		class_ap['ap'] = _ap(precision, recall)
+		# ap['ap'] = np.mean(ap['ap'])
+	return class_ap
 
 def _precision_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 	'''
