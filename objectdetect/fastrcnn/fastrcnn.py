@@ -19,7 +19,7 @@ from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.utils.helpers import meshgrid2D, format_image, StreamPrinter
 from bnr_ml.objectdetect.detector import BaseDetector
-from bnr_ml.objectdetect.nms import nms
+from bnr_ml.objectdetect.nms.nms import nms
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 from bnr_ml.objectdetect.fastrcnn.roi_layer import ROILayer

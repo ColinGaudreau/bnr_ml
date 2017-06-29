@@ -100,7 +100,6 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 	for key, ap in aps.iteritems():
 		scores, tp, fp, n_labels = np.asarray(ap['scores']), np.asarray(ap['tp']), np.asarray(ap['fp']), np.sum(ap['n_labels'])
 		idx = np.argsort(scores)[::-1]
-		pdb.set_trace()
 		tp, fp = tp[idx], fp[idx]
 		tp, fp = np.cumsum(tp), np.cumsum(fp)
 		recall = tp / n_labels if n_labels > 0 else np.zeros_like(tp)
