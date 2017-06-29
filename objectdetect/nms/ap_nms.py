@@ -121,7 +121,7 @@ def get_labels(alpha, phi, rho, gamma):
     return c
 '''
 
-def affinity_propagation(boxes, affinity, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.], **kwargs):
+def affinity_propagation(boxes, affinity, iterations=10, tol=1e-5, damping=0.5, print_every=2, w=[1.,1.,1.,1.]):
     wa, wb, wc, wd = w[0], w[1], w[2], w[3]
     
     s_hat = get_s_hat(S, wa, wb, wc)

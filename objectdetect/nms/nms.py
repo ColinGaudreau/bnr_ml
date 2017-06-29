@@ -4,6 +4,8 @@ import numpy as np
 import ap_nms
 import ap_nms_gpu
 
+import pdb
+
 METHOD_VIOLA_JONES = 'viola-jones'
 METHOD_GREEDY = 'greedy'
 METHOD_AP = 'ap'
@@ -50,6 +52,8 @@ def nms(boxes, *args, **kwargs):
 			if uses_iou:
 				idx_row, idx_col = np.meshgrid(idx_cls, idx_cls)
 				affinity = kwargs['iou'][idx_row, idx_col] - 1.
+				diag = np.arange(affinity.shape[0])
+				affinity[diag,diag] = np.asarray([b.confidence-1. for b in boxes[idx_cls]])
 				new_boxes = detect_fn(boxes[idx_cls].tolist(), affinity, *args, **kwargs)
 			else:
 				new_boxes = detect_fn(boxes[idx_cls].tolist(), *args, **kwargs)
