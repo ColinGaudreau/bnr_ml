@@ -18,7 +18,7 @@ roi_code = """
 	
 	struct asg3 {
 		int dim1; int dim2; int dim3;
-	};
+	}; 
 	
 	struct shape3 {
 		int dim1, __padding1; int dim2, __padding2; int dim3, __padding3;
