@@ -87,7 +87,7 @@ def confusion(detector, annotations, num_to_label, verbose=True, print_obj=Strea
 		idx = np.argsort(scores)[::-1]
 		tp, fp = tp[idx], fp[idx]
 		tp, fp = np.cumsum(tp), np.cumsum(fp)
-		tn = np.maximum(0., n_labels - tp)
+		fn = np.maximum(0., n_labels - tp)
 		confusion[key] = {'tp': tp, 'fp': fp, 'fn': fn}
 
 	return confusion
@@ -106,10 +106,10 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 	if verbose:
 		print_obj.println('Beginning mean average precision calculation...')
 
-	confusion = confusion(detector, annotations, num_to_label, verbose=verbose, print_obj=print_obj, loc=loc, detector_args=detector_args)
+	conf_mat = confusion(detector, annotations, num_to_label, verbose=verbose, print_obj=print_obj, loc=loc, detector_args=detector_args)
 
 	class_ap = {}
-	for key, conf in confusion.iteritems():
+	for key, conf in conf_mat.iteritems():
 		tp, fp, fn = conf['tp'], conf['fp'], conf['fn']
 
 		recall = np.nan_to_num(tp / (tp + fn), 0.)
@@ -224,11 +224,15 @@ def f1_score(detector, annotations, num_to_label, beta=1., min_iou=0.5, verbose=
 	if verbose:
 		print_obj.println('Beginning f1 score calculation...')
 
-	confusion = confusion(detector, annotations, num_to_label, verbose=verbose, print_obj=print_obj, loc=loc, detector_args=detector_args)
+	conf_mat = confusion(detector, annotations, num_to_label, verbose=verbose, print_obj=print_obj, loc=loc, detector_args=detector_args)
 
 	f1_scores = {}
-	for cls, conf in confusion.iteritems():
-		tp, fp, fn = conf['tp'][-1], conf['fp'][-1], conf['fn'][-1]
+	for cls, conf in conf_mat.iteritems():
+		tp, fp, fn = conf['tp'], conf['fp'], conf['fn']
+		if tp.size == 0:
+			f1_scores[cls] = 0.
+			continue
+		tp, fp, fn = tp[-1], fp[-1], fn[-1]
 
 		f1 = (1 + beta**2) * tp / ((1 + beta**2) * tp + fp + (beta**2) * fn)
 
