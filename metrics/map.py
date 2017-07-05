@@ -342,7 +342,7 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 		'scores': [],
 		'classes': [],
 		'mAP-per-detection': [],
-		'mAP-per-class': {},
+		'per-class': {},
 		'fn-info': {'class': [], 'size': []},
 		'fp-info': {'matched': {'class': [], 'size': [], 'scores': }, 'unmatched': {'class': [], 'scores': []}},
 		'tp-info': {'class': [], 'size': [], 'scores': []}
@@ -439,8 +439,8 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 		tp_cls, fp_cls = np.cumsum(tp_cls), np.cumsum(fp_cls)
 		prec = tp_cls / n_labels_class[cls]
 		rec = tp_cls / (tp_cls + fp_cls)
-		m_ap, _, _2 = _ap(prec, rec)
-		info_dict['mAP-per-class'][cls] = m_ap
+		m_ap, prec, rec = _ap(prec, rec)
+		info_dict['per-class'][cls] = {'mAP': m_ap, 'precision': prec, 'recall': rec}
 
 	# calculate mAP
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
