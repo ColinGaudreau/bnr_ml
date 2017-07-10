@@ -7,6 +7,7 @@ from bnr_ml.utils.helpers import StreamPrinter, meshgrid, format_image
 from bnr_ml.utils.nonlinearities import softmax, smooth_abs, smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
 from bnr_ml.objectdetect.nms.nms import nms
+import bnr_ml.objectdetect.utils as utils
 from bnr_ml.logger.learning_objects import BaseLearningObject, BaseLearningSettings
 
 from lasagne import layers
@@ -196,37 +197,81 @@ class SingleShotDetector(BaseLearningObject):
 
 		return train_loss, test_loss, extras
 
-	def detect(self, im, thresh=0.75, overlap=0.4, n_apply=1, num_to_label=None):
+	def detect(self, im, thresh=0.75, overlap=0.4, n_apply=1, num_to_label=None, return_iou=False):
 		old_size = im.shape[:2]
 		im = cv2.resize(im, self.input_shape[::-1], interpolation=cv2.INTER_NEAREST)
 		im = format_image(im, theano.config.floatX)
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0).reshape((1,3) + self.input_shape)
 
 		if not (self._trained and hasattr(self, '_detect_fn')):
-			self._detect_fn = theano.function([self.input], self._predictive_maps)
+			self._thresh = T.scalar('threshold')
 
-		detections = self._detect_fn(swap(im))
+			predictions = None
+			for predictive_map, default_map in self._predictive_maps, self._default_maps:
+				default_map = default_map.dimshuffle('x',0,1,2,3)
+
+				# undo-parametrization
+				predictive_map = T.set_subtensor(predictive_map[:,:,2:4], default_map[:,:,2:4] * T.exp(predictive_map[:,:,2:4]))
+				predictive_map = T.set_subtensor(predictive_map[:,:,:2], default_map[:,:,2:4] * predictive_map[:,:,:2] + default_map[:,:,:2])
+				predictive_map = T.set_subtensor(predictive_map[:,:,2:4], predictive_map[:,:,:2] + predictive_map[:,:,2:4])
+
+				# c-contiguous so last dimension should be adjacent in memory --- this means we have matrix with predictions now
+				predictive_map = predictive_map.dimshuffle(0,1,3,4,2).reshape((-1, 4 + (self.num_classes+1)))
+
+				# get all predictions over threshold
+				ge_thresh = T.ge(T.max(predictive_map[:,-(self.num_classes+1):-1], axis=1), self._thresh)
+				idx_det = T.argmax(predictive_map[:,-(self.num_classes+1):-1], axis=1)
+
+				# filter out bad predictions
+				confidence = T.max(predictive_map[:,-(self.num_classes+1):-1], axis=1)[ge_thresh.nonzero()]
+				cls = idx_det[ge_thresh.nonzero()]
+				box_preds = predictive_map[:,:4][T.arange(predictive_map.shape[0])[ge_thresh.nonzero()],:]
+
+				# combine results in Nx(4 + n_classes +1) matrix
+				preds = T.concatenate((box_preds, confidence[:,None], cls[:,None]), axis=1)
+
+				# concatenate for all feature maps
+				if predictions is None:
+					predictions = preds
+				else:
+					predictions = T.concatenate((predictions, preds), axis=0)
+
+			iou_matrix = utils.iou_matrix(predictions[:,:4])
+
+			self._detect_fn = theano.function([self.input], [predictions, iou_matrix])
+
+		detections, iou_matrix = self._detect_fn(swap(im))
 
 		boxes = []
-		for detection, dmap in zip(detections, self._default_maps_asarray):
-			for i in range(detection.shape[1]):
-				for j in range(detection.shape[3]):
-					for k in range(detection.shape[4]):
-						coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
-						coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
-						coord[:2] = dmap[i,2:4,j,k] * coord[:2] + dmap[i,:2,j,k]
-						if score.max() > thresh:
-							cls = score.argmax()
-							if num_to_label is not None:
-								cls = num_to_label[cls]
-							box = BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]) * old_size
-							box.cls = cls
-							box.confidence = score.max()
-							boxes.append(box)
+		for i in range(detections.shape[0]):
+			cls = detections[i,-1]
+			if num_to_label is not None:
+				cls = num_to_label[cls]
+			boxes.append(BoundingBox(*detections[i,:4], cls=cls, confidence=detections[i,4]))
+
+		# boxes = []
+		# for detection, dmap in zip(detections, self._default_maps_asarray):
+		# 	for i in range(detection.shape[1]):
+		# 		for j in range(detection.shape[3]):
+		# 			for k in range(detection.shape[4]):
+		# 				coord, score = detection[0,i,:4,j,k], detection[0,i,-(self.num_classes + 1):-1,j,k]
+		# 				coord[2:] = dmap[i,2:4,j,k] * np.exp(coord[2:])
+		# 				coord[:2] = dmap[i,2:4,j,k] * coord[:2] + dmap[i,:2,j,k]
+		# 				if score.max() > thresh:
+		# 					cls = score.argmax()
+		# 					if num_to_label is not None:
+		# 						cls = num_to_label[cls]
+		# 					box = BoundingBox(coord[0], coord[1], coord[0] + coord[2], coord[1] + coord[3]) * old_size
+		# 					box.cls = cls
+		# 					box.confidence = score.max()
+		# 					boxes.append(box)
 	
 		boxes = nms(boxes, overlap=overlap, n_apply=n_apply)
 
-		return boxes
+		if return_iou:
+			return boxes, iou_matrix
+		else:
+			return boxes
 	
 	def _build_default_maps(self):
 		'''

@@ -276,12 +276,12 @@ def iou_matrix(preds):
 	preds1, preds2 = preds[idx1,:], preds[idx2,:]
 	
 	xi, yi = T.maximum(preds1[:,:,0], preds2[:,:,0]), T.maximum(preds1[:,:,1], preds2[:,:,1])
-	xf, yf = T.minimum(preds1[:,:,0]+preds1[:,:,2], preds2[:,:,0]+preds2[:,:,2]), T.minimum(preds1[:,:,1]+preds1[:,:,3], preds2[:,:,1]+preds2[:,:,3])
+	xf, yf = T.minimum(preds1[:,:,2], ppreds2[:,:,2]), T.minimum(preds1[:,:,3], preds2[:,:,3])
 
 	w, h = T.maximum(xf - xi, 0.) ,T.maximum(yf - yi, 0.)
 
 	isec = w * h
-	u = preds1[:,:,2] * preds1[:,:,3] + preds2[:,:,2] * preds2[:,:,3] - isec
+	u = (preds1[:,:,2]-preds1[:,:,0]) * (preds1[:,:,3]-preds1[:,:,1]) + (preds2[:,:,2]-preds2[:,:,0]) * (preds2[:,:,3]-preds2[:,:,1]) - isec
 
 	return isec / u
 

@@ -317,6 +317,7 @@ class Yolo2ObjectDetector(BaseLearningObject):
 			output = T.set_subtensor(output[:,:,3], h_acr * T.exp(output[:,:,3]))
 			output = T.set_subtensor(output[:,:,0], output[:,:,0] + x - output[:,:,2] / 2)
 			output = T.set_subtensor(output[:,:,1], output[:,:,1] + y - output[:,:,3] / 2)
+			output = T.set_subtensor(output[:,:,2:4], output[:,:,2:4] + output[:,:,:2])
 
 			# define confidence in prediction
 			conf = output[:,:,4] * T.max(output[:,:,-self.num_classes:], axis=2)
