@@ -262,6 +262,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			overlap=.4,
 			n_apply=1,
 			num_to_label=None,
+			return_iou=False
 		):
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
@@ -279,7 +280,35 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		# compile detection function if it has not yet been done
 		detect_input_ndarray = np.zeros((batch_size,3) + self.input_shape, dtype=theano.config.floatX)
 		if self._trained or not hasattr(self, '_detect_fn'):
-			self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
+			self._thresh = T.scalar('threshold')
+			# self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
+
+			class_scores = self._detect_test
+			ge_thresh = T.geq(T.max(class_scores[:,:-1], axis=1), self._thresh)
+			idx_cls = T.argmax(class_scores, axis=1)[ge_thresh.nonzero()]
+
+			# get confidence scores
+			confidence = class_scores[T.arange(class_scores.shape[0]), idx_cls]
+
+			# get boxes which are considered successful detections
+			box_preds = self._localize_test[T.arange(self._localize_test.shape[0]), idx_cls, :]
+
+			# get roi which are considered successful detections
+			roi_detect = self.boxes[T.arange(self.boxes.shape[0])[ge_thresh.nonzero()], :]
+
+			# re-parametrize boxes
+			box_preds = T.set_subtensor(box_preds[:,2:], T.exp(box_preds[:,2:]))
+			box_preds = T.set_subtensor(box_preds[:,:2], box_preds[:,:2] - box_preds[:,2:]/2)
+			box_preds = T.set_subtensor(box_preds[:,[0,2]], box_preds[:,[0,2]] * roi_detect[:,[2]])
+			box_preds = T.set_subtensor(box_preds[:,[1,3]], box_preds[:,[1,3]] * roi_detect[:,[3]])
+			box_preds = T.set_subtensor(box_preds[:,2:], box_preds[:,:2] + box_preds[:,2:])
+			box_preds = T.set_subtensor(box_preds[:,:2], box_preds[:,:2] + roi_detect[:,:2])
+
+			predictions = T.concatenate((box_preds, confidence[:,None], idx_cls[:,None]))
+			iou_matrix = utils.iou_matrix(predictions)
+
+			self._detect_fn = theano.function([self.input, self.boxes, self._thresh], [predictions, iou_matrix])			
+
 			self._trained = False
 		
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
@@ -294,38 +323,48 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		im = resize(im, self.input_shape)
                 im = swap(im).reshape((1,3) + im.shape[:2]).astype(theano.config.floatX)
 
-		class_score, coord = self._detect_fn(im, boxes)
+		predictions, iou_matrix = self._detect_fn(im, boxes, float(thresh))
+
+		objects = []
+		for i in range(predictions.shape[0]):
+			cls = predictions[i,5]
+			if num_to_label is not None:
+				cls = num_to_label[cls]
+			objects = BoundingBox(*predictions[i,:4], cls=cls, confidence=predictions[i,4])
 
 		# filter out windows which are 1) not labeled to be an object 2) below threshold
-		class_id = np.argmax(class_score[:,:-1], axis=1)
-		class_score = class_score[np.arange(class_score.shape[0]), class_id]
-		is_obj = class_score > thresh
-		coord = coord[np.arange(coord.shape[0]), class_id]
-		coord[:,2:] = np.exp(coord[:,2:])
-		coord[:,:2] -= coord[:,2:]/2
+		# class_id = np.argmax(class_score[:,:-1], axis=1)
+		# class_score = class_score[np.arange(class_score.shape[0]), class_id]
+		# is_obj = class_score > thresh
+		# coord = coord[np.arange(coord.shape[0]), class_id]
+		# coord[:,2:] = np.exp(coord[:,2:])
+		# coord[:,:2] -= coord[:,2:]/2
 
 		# re-adjust boxes for the image
-		objects = []
-		scale_factor = (float(old_size[0])/im_size[0], float(old_size[1])/im_size[1])
-		for i, box in enumerate(regions):
-			# check if object confidence above threshold
-			if is_obj[i]:
-				# adjust box coordinates relative to the proposal region and original image size
-				coord[i, [0,2]] *= box.w
-				coord[i, [1,3]] *= box.h
-				coord[i, 0] += box.xi
-				coord[i, 1] += box.yi
-				coord[i, 2:] += coord[i, :2]
-				cls = class_id[i]
-				if num_to_label is not None:
-					cls = num_to_label[cls]
-				obj = BoundingBox(*coord[i,:].tolist(), cls=cls, confidence=class_score[i])
-				obj *= scale_factor
-				objects.append(obj)
+		# objects = []
+		# scale_factor = (float(old_size[0])/im_size[0], float(old_size[1])/im_size[1])
+		# for i, box in enumerate(regions):
+		# 	# check if object confidence above threshold
+		# 	if is_obj[i]:
+		# 		# adjust box coordinates relative to the proposal region and original image size
+		# 		coord[i, [0,2]] *= box.w
+		# 		coord[i, [1,3]] *= box.h
+		# 		coord[i, 0] += box.xi
+		# 		coord[i, 1] += box.yi
+		# 		coord[i, 2:] += coord[i, :2]
+		# 		cls = class_id[i]
+		# 		if num_to_label is not None:
+		# 			cls = num_to_label[cls]
+		# 		obj = BoundingBox(*coord[i,:].tolist(), cls=cls, confidence=class_score[i])
+		# 		obj *= scale_factor
+		# 		objects.append(obj)
 		
 		# do nms
 		objects = nms(objects, overlap=overlap, n_apply=n_apply)
 		
-		return objects
+		if return_iou:
+			return objects, iou_matrix
+		else:
+			return objects
 
 
