@@ -17,6 +17,7 @@ import cv2
 
 from bnr_ml.utils.nonlinearities import smooth_l1
 from bnr_ml.objectdetect.utils import BoundingBox
+import bnr_ml.objectdetect.utils as utils
 from bnr_ml.utils.helpers import meshgrid2D, format_image, StreamPrinter
 from bnr_ml.objectdetect.detector import BaseDetector
 from bnr_ml.objectdetect.nms.nms import nms
@@ -240,8 +241,8 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		dlib.find_candidate_object_locations(im, regions, kvals, min_size)
 		return [BoundingBox(r.left(), r.top(), r.right(), r.bottom()) for r in regions]
 
-	def _filter_regions(self, regions, min_w, min_h):
-		return [box for box in regions if box.w > min_w and box.h > min_h and box.isvalid()]
+	def _filter_regions(self, regions, min_w, min_h, max_ratio):
+		return [box for box in regions if box.w > min_w and box.h > min_h and float(max(box.h, box.w))/min(box.h, box.w) < max_ratio and box.isvalid()]
 
 	def _rescale_image(self, im, max_dim):
 		scale = float(max_dim) / (max(im.shape[0], im.shape[1]))
@@ -256,6 +257,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			max_dim=600,
 			min_w=10,
 			min_h=10,
+			max_ratio=2,
 			min_size=100,
 			batch_size=50,
 			max_regions=1000,
@@ -284,18 +286,21 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			# self._detect_fn = theano.function([self.input, self.boxes], [self._detect_test, self._localize_test])
 
 			class_scores = self._detect_test
-			ge_thresh = T.geq(T.max(class_scores[:,:-1], axis=1), self._thresh)
-			idx_cls = T.argmax(class_scores, axis=1)[ge_thresh.nonzero()]
+			ge_thresh = T.ge(T.max(class_scores[:,:-1], axis=1), self._thresh)
+			idx_cls = T.argmax(class_scores, axis=1)
 
 			# get confidence scores
 			confidence = class_scores[T.arange(class_scores.shape[0]), idx_cls]
+			confidence = confidence[ge_thresh.nonzero()]
 
 			# get boxes which are considered successful detections
 			box_preds = self._localize_test[T.arange(self._localize_test.shape[0]), idx_cls, :]
-
+			box_preds = box_preds[T.arange(box_preds.shape[0])[ge_thresh.nonzero()],:]
+			
 			# get roi which are considered successful detections
-			roi_detect = self.boxes[T.arange(self.boxes.shape[0])[ge_thresh.nonzero()], :]
-
+			roi_detect = T.reshape(self.boxes, (-1, 4))
+			roi_detect = roi_detect[T.arange(roi_detect.shape[0])[ge_thresh.nonzero()], :]
+			
 			# re-parametrize boxes
 			box_preds = T.set_subtensor(box_preds[:,2:], T.exp(box_preds[:,2:]))
 			box_preds = T.set_subtensor(box_preds[:,:2], box_preds[:,:2] - box_preds[:,2:]/2)
@@ -304,15 +309,16 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			box_preds = T.set_subtensor(box_preds[:,2:], box_preds[:,:2] + box_preds[:,2:])
 			box_preds = T.set_subtensor(box_preds[:,:2], box_preds[:,:2] + roi_detect[:,:2])
 
-			predictions = T.concatenate((box_preds, confidence[:,None], idx_cls[:,None]))
-			iou_matrix = utils.iou_matrix(predictions)
+			predictions = T.concatenate((box_preds, confidence[:,None], idx_cls[ge_thresh.nonzero()][:,None]), axis=1)
+			# predictions = box_preds
+			iou_matrix = utils.iou_matrix(predictions[:,:4])
 
 			self._detect_fn = theano.function([self.input, self.boxes, self._thresh], [predictions, iou_matrix])			
 
 			self._trained = False
 		
 		swap = lambda im: im.swapaxes(2,1).swapaxes(1,0)
-		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h))
+		regions = np.asarray(self._filter_regions(self._propose_regions(im, kvals, min_size), min_w, min_h, max_ratio))
 		if max_regions is not None:
 			max_regions = min(regions.shape[0], max_regions)
 			regions = regions[npr.choice(regions.shape[0], max_regions, replace=False)]
@@ -324,13 +330,12 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
                 im = swap(im).reshape((1,3) + im.shape[:2]).astype(theano.config.floatX)
 
 		predictions, iou_matrix = self._detect_fn(im, boxes, float(thresh))
-
 		objects = []
 		for i in range(predictions.shape[0]):
 			cls = predictions[i,5]
 			if num_to_label is not None:
 				cls = num_to_label[cls]
-			objects = BoundingBox(*predictions[i,:4], cls=cls, confidence=predictions[i,4])
+			objects.append(BoundingBox(*predictions[i,:4], cls=cls, confidence=predictions[i,4]) * old_size)
 
 		# filter out windows which are 1) not labeled to be an object 2) below threshold
 		# class_id = np.argmax(class_score[:,:-1], axis=1)
@@ -360,7 +365,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		# 		objects.append(obj)
 		
 		# do nms
-		objects = nms(objects, overlap=overlap, n_apply=n_apply)
+		objects = self._filter_regions(nms(objects, overlap=overlap, n_apply=n_apply), min_w, min_h, max_ratio)
 		
 		if return_iou:
 			return objects, iou_matrix
