@@ -19,8 +19,6 @@ def _confusion_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 	boxes = boxes[idx]
 	num_labels = labels.__len__()
 	was_used = np.zeros(num_labels, dtype=np.bool)
-	tp, fp = np.zeros(boxes.size), np.zeros(boxes.size)
-
 	for i in range(boxes.size):
 		box = boxes[i]
 		best_iou = 0.
@@ -99,7 +97,7 @@ def _ap(precision, recall):
 	rec[0], rec[-1] = 0., 1.
 	for i in range(prec.size - 2, -1, -1):
 		prec[i] = max(prec[i], prec[i+1])
-	index = np.asarray([i + 1 for i in range(rec.size - 1) if np.abs(rec[i] - rec[i+1]) > 1e-5])
+	index = np.asarray([i + 1 for i in range(rec.size - 1) if np.abs(rec[i] - rec[i+1]) > 1e-8])
 	return ((rec[index] - rec[index - 1]) * prec[index]).sum(), prec, rec
 
 def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):	
@@ -111,7 +109,6 @@ def map(detector, annotations, num_to_label, verbose=True, print_obj=StreamPrint
 	class_ap = {}
 	for key, conf in conf_mat.iteritems():
 		tp, fp, fn = conf['tp'], conf['fp'], conf['fn']
-
 		recall = np.nan_to_num(tp / (tp + fn), 0.)
 		precision = tp / (tp + fp)
 
@@ -327,7 +324,7 @@ def _confusion_per_box(boxes, labels, min_iou=0.5, return_pr_curve=False):
 
 	return scores[idx], tp, fp, num_labels
 
-def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args{}):
+def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, verbose=True, print_obj=StreamPrinter(open('/dev/stdout', 'w')), loc='', detector_args={}):
 	if verbose:
 		print_obj.println('Beginning detector analysis...')
 
@@ -344,7 +341,7 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 		'mAP-per-detection': [],
 		'per-class': {},
 		'fn-info': {'class': [], 'size': []},
-		'fp-info': {'matched': {'class': [], 'size': [], 'scores': }, 'unmatched': {'class': [], 'scores': []}},
+		'fp-info': {'matched': {'class': [], 'size': [], 'scores': []}, 'unmatched': {'class': [], 'scores': []}},
 		'tp-info': {'class': [], 'size': [], 'scores': []}
 	}
 	n_labels = 0
@@ -355,13 +352,14 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 	for i, annotation in enumerate(annotations):
 		# perform detection in image
 		boxes = np.asarray(detector.detect(imread(loc + annotation['image']), **detector_args))
-
+		
 		# get true labels
 		labels = np.asarray(annotation['annotations'])
 
 		# get scores from predictions and sort them in descending order
 		scores = np.asarray([box.confidence for box in boxes])
 		idx = np.argsort(scores)[::-1]
+		boxes, scores = boxes[idx], scores[idx]
 
 		was_used = np.zeros(labels.size, dtype=np.bool)
 
@@ -410,10 +408,12 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 				gt_box = BoundingBox(label['x'], label['y'], label['x'] + label['w'], label['y'] + label['w'], cls=label['label'])
 				info_dict['fn-info']['class'].append(gt_box.cls)
 				info_dict['fn-info']['size'].append(gt_box.size)
-
+		
+		idx = np.argsort(scores)[::-1]
+		tp_image, fp_image = tp[idx], fp[idx]
 		tp_image, fp_image = np.cumsum(tp), np.cumsum(fp)
-		prec = tp_image / labels.size if labels.size > 0 else tp * 0
-		rec = tp_image / (tp_image + fp_image)
+		rec = tp_image / labels.size if labels.size > 0 else tp * 0
+		prec = tp_image / (tp_image + fp_image)
 
 		m_ap, _, _2 = _ap(prec, rec)
 		# get quality of detection per image
@@ -437,16 +437,16 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 		idx_cls = classes == cls
 		tp_cls, fp_cls = tp[idx_cls], fp[idx_cls]
 		tp_cls, fp_cls = np.cumsum(tp_cls), np.cumsum(fp_cls)
-		prec = tp_cls / n_labels_class[cls]
-		rec = tp_cls / (tp_cls + fp_cls)
+		rec = tp_cls / n_labels_class[cls]
+		prec = tp_cls / (tp_cls + fp_cls)
 		m_ap, prec, rec = _ap(prec, rec)
 		info_dict['per-class'][cls] = {'mAP': m_ap, 'precision': prec, 'recall': rec}
 
 	# calculate mAP
 	tp, fp = np.cumsum(tp), np.cumsum(fp)
-	fn = n_labels - tp
-	prec = tp / n_labels
-	rec = tp / (tp + fp)
+	fn = np.maximum(0., n_labels - tp)
+	rec = tp / n_labels
+	prec = tp / (tp + fp)
 	m_ap, prec, rec = _ap(prec, rec)
 
 	# store final calculations
@@ -456,6 +456,7 @@ def detector_analysis(detector, annotations, class_list, beta=1., min_iou=0.5, v
 	info_dict['f1'] = (1 + beta**2) * tp / ((1 + beta**2) * tp + (beta**2) * fn + fp)
 	info_dict['tp'] = tp
 	info_dict['fp'] = fp
+	info_dict['fn'] = fn
 	info_dict['scores'] = scores
 
 	return info_dict

@@ -66,6 +66,9 @@ def _greedy(boxes, *args, **kwargs):
 	overlap=0.4
 	if 'overlap' in kwargs:
 		overlap = kwargs['overlap']
+	min_box_per_region = 1
+        if 'min_box_per_region' in kwargs:
+                min_box_per_region = kwargs['min_box_per_region']
 	if len(boxes) == 0:
 		return []
 	
@@ -78,13 +81,16 @@ def _greedy(boxes, *args, **kwargs):
 
 	while len(boxes) > 0:
 		i = 0
+		n_region = 1
 		while i < len(boxes):
 			box = boxes[i]
 			if curr_box.iou(box) > overlap:
 				_ = boxes.pop(i)
+				n_region += 1
 			else:
 				i += 1
-		used_boxes.append(curr_box)
+		if n_region >= min_box_per_region:
+			used_boxes.append(curr_box)
 		if len(boxes) > 0:
 			curr_box = boxes.pop(0)
 
@@ -98,7 +104,7 @@ def _viola_jones(boxes, *args, **kwargs):
 	if 'overlap' in kwargs:
 		overlap = kwargs['overlap']
 
-	min_box_per_region = 2
+	min_box_per_region = 1
 	if 'min_box_per_region' in kwargs:
 		min_box_per_region = kwargs['min_box_per_region']
 

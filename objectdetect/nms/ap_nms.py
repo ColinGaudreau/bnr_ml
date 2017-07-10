@@ -105,11 +105,11 @@ def get_labels(alpha, phi, rho, gamma):
     message[diag, diag] += np.sum(phi[:-1,:-1] + gamma[:-1,:-1], axis=1)
     
     examplars = np.where(np.diag(message) > 0)[0]
-
     # message = np.nan_to_num(alpha + rho + phi + gamma, 0.)
     # examplars = np.where(np.diag(message) > 0)[0]
     for k in range(labels.size):
-        labels[k] = examplars[np.argmax(message[k,examplars])]
+	if examplars.size > 0:
+        	labels[k] = examplars[np.argmax(message[k,examplars])]
     return labels
 '''
     diag_idx = np.arange(c.shape[0])
