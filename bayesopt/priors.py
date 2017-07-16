@@ -2,10 +2,26 @@ import numpy as np
 from scipy.special import gamma
 
 class BasePrior(object):
-    def __init__(self):
-        self.support = (-np.inf, np.inf)
+    '''
+    Base class for all priors.
+
+    Parameters
+    ----------
+    support : tuple (default (-inf, inf))
+        Support of distribution.
+    '''
+    def __init__(self, support=(-np.inf, np.inf)):
+        self.support = support
 
     def logprob(self, x):
+        '''
+        Log probability density function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+        '''
         raise NotImplementedError
 
     def __repr__(self):
