@@ -193,6 +193,16 @@ class BoundingBox(object):
 		return new_box
 
 def draw_boxes(im, boxes, color=(255,255,255)):
+	'''
+	Draw boxes on image from list of :class:`BoundingBox` instances.
+
+	Parameters
+	----------
+	im : numpy.ndarray
+		blah
+	boxes : list
+		blah
+	'''
 	if not isinstance(im, Image.Image):
 		if im.max() <= 1:
 			im = im * 255
