@@ -9,17 +9,33 @@ import bayesopt
 import pdb
 
 class Parameter(object):
+	'''
+	Variable representing a covariance hyperparameter.
+
+	Parameters
+	----------
+	value : float
+		Current value of parameter.
+	prior : :class:`bnr_ml.bayesopt.priors.BasePrior` or None instance (default None)
+		Prior over the covariance hyperparameter.
+	'''
 	def __init__(self, value, prior=None):
 		self.value = value
 		self.prior = prior
 
 	def logprob(self):
+		'''
+		Log probability of current value of parameter.
+		'''
 		return self.prior.logprob(self.value)
 
 	def __repr__(self):
 		return 'Parameter({}, {})'.format(self.value, self.prior)
 
 class BaseKernel(object):
+	'''
+	Base class for all kernels.
+	'''
 	def __init__(self, parameters=[]):
 		self.parameters = parameters
 
@@ -59,6 +75,7 @@ class BaseKernel(object):
 		return 'Kernel({}, {})'.format(self.__class__, self.parameters.__str__())
 
 class SquaredExpKernel(BaseKernel):
+
 	def __init__(self, parameters=[]):
 		if parameters.__len__() == 0:
 			self.parameters = [Parameter(0.1, GammaPrior())]
@@ -112,13 +129,18 @@ class LinearKernel(BaseKernel):
 
 
 class MaternKernel(BaseKernel):
-	def __init__(self, parameters=[], type='5/2'):
-		if parameters.__len__() == 0:
-			self.parameters = [Parameter(0.1, GammaPrior())]
-		else:
-			for par in parameters:
-				assert(isinstance(par, Parameter))
-			self.parameters = parameters
+	'''
+	Matern kernel.
+
+	Parameters
+	----------
+	parameters : list (default : [Parameter(0.1, GammaPrior())])
+		List of covariance hyperparameters.
+	type : '5/2' or '3/2' (default '5/2')
+		Type of Matern kernel.
+	'''
+	def __init__(self, parameters=[Parameter(0.1, GammaPrior())], type='5/2'):
+		self.parameters = parameters
 		assert(type == '5/2' or type == '3/2')
 		self.type = type
 
@@ -135,7 +157,14 @@ class MaternKernel(BaseKernel):
 
 class InputWarpedKernel(BaseKernel):
 	'''
-	Input warped kernel
+	Input warped kernel.
+
+	Parameters
+	----------
+	kernel : :class:`BaseKernel` instance
+		Initial kernel.
+	N : int
+		Number of dimensions
 	'''
 	def __init__(self, kernel, N, parameters=None):
 		self.kernel = kernel
@@ -171,8 +200,7 @@ class InputWarpedKernel(BaseKernel):
 
 class DiscreteKernel(BaseKernel):
 	'''
-	Kernel for discrete data:
-	K(x, y) = {1 if x = j, 0 otherwise}
+	Discrete Kernel for categorical variables.
 	'''
 	def __init__(self, parameters=[]):
 		self.parameters = parameters
@@ -193,7 +221,12 @@ class DiscreteKernel(BaseKernel):
 
 class MixedKernel(BaseKernel):
 	'''
-	Use a different kernel for different sorts of kernels.
+	Mixed kernel uses different sorts of kernels for different dimensions.
+
+	Parameters
+	----------
+	feature_map : list
+		List of tuples where the first entry in a touble is the kernel, while the second is a list corresponding to the dimensions the kernels applies to.
 	'''
 	def __init__(self, feature_map):
 		'''

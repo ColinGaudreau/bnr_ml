@@ -15,10 +15,55 @@ SEARCH_SOBOL = 0
 SEARCH_GRID = 1
 
 ACQ_EI = 0
-ACQ_UCB = 1
+ACQ_LCB = 1
 ACQ_PI = 2
 
 class BayesOpt(object):
+	'''
+	Class for performing Bayesian optimization. In my formulation, the objective function is minimized.
+
+	Parameters
+	----------
+	optfun : function
+		Objective function.
+
+	X : numpy.ndarray
+		NxM matrix of pre-evaluated points, where N is the number of points and M the dimensionality.
+
+	Y : numpy.ndarray
+		Nx1 matrix of values of `optfun` at point `X`.
+
+	noise : float
+		Noise to add to kernel for Bayesian optimization.
+
+	kernel : :class:`bnr_ml.bayesopt.kernels.BaseKernel` instance
+		Kernel to use for Bayesian optimization.
+
+	bounds : List of tuples, or None (default None)
+		List of boundaries for each dimension.  If `None` is given, then the interval [0,1] is assumed for each dimension.
+
+	burnin : int (default 500)
+		Number of iterations to run the sampler for hyperparameter marginalization.
+
+	resample : int (default 50)
+		Number of iterations to run the sampler after a new point has been evaluated.
+
+	n_init : int (default 1)
+		If no points have been evaluated, random points on the search grid are evaluated.  `n_init` is the number of random points to evaluate.
+
+	tol : float (default 1e-6)
+		Tolerance for adding new points -- if points are very close, the Gram matrix becomes singular.
+
+	sobol_seed : int (default 1991)
+		Seed for sobol random number generator.
+
+	sampler : :class:`bnr_ml.bayesopt.samplers.BaseSampler` instance (default :class:`bnr_ml.bayesopt.sampler.MDSliceSampler`)
+		Sampler used for hyperparameter marginalization.
+
+	sampler_args : dict (default {})
+		Arguments to be based to sampler initializer.
+
+	'''
 
 	def __init__(
 			self,
@@ -94,35 +139,63 @@ class BayesOpt(object):
 			self,
 			iters=20,
 			verbose=False,
-			num_samples=10,
+			n_samples=10,
 			marginalize=True,
-			num_grid=1000,
+			n_grid=1000,
 			search_type=SEARCH_SOBOL,
 			acq_type=ACQ_EI,
 			kappa=0.5,
 			squash=None
 		):
+		'''
+		Optimize `optfun`.
+
+		Parameters
+		----------
+		iters : int (default 20)
+			Number of optimization iterations.
+		verbose : bool (default False)
+			Whether to give feedback during optimization.
+		n_samples : int (default 10)
+			Number of samples to take during covariance hyperparameter optimization.
+		marginalize : bool (default True)
+			Whether to marginalize covariance hyperparameters.
+		n_grid : bool (default True)
+			Number of points to evaluate when optimizing acquisition function
+		search_type : int (default SEARCH_SOBOL)
+			Method of searching grid when optimizing acquisition function.
+		acq_type : int (default ACQ_EI)
+			Acquisition type: EI, LCB, PI.
+		kappa : float (default 0.5)
+			Parameter controlling exploration vs. exploitation when using the LCB acquisition type.
+
+
+		Returns
+		-------
+		numpy.ndarray
+			Best value of `optfun`.
+		'''
 		bounds = self.bounds
 		# determine whether or not to marginalize kernel hyperparameters
 		marginalize &= self.marginalize
 
 		if acq_type == ACQ_EI:
 			acq_fun = self._ei
-		elif acq_type == ACQ_UCB:
-			acq_fun = lambda x: self._ucb(x, kappa)
+		elif acq_type == ACQ_LCB:
+			acq_fun = lambda x: self._lcb(x, kappa)
 		else:
 			raise Exception('acq_type={} not valid'.format(acq_type))
 
 		if marginalize:
-			optfun = lambda x, *args: self._integrated_acquisition(x, num_samples, acq_fun)
+			optfun = lambda x, *args: self._integrated_acquisition(x, n_samples, acq_fun)
 		else:
 			optfun = lambda x, *args: acq_fun
 
 		for i in range(iters):
 			if search_type == SEARCH_SOBOL:
-				optval = self._sobol_search(optfun, num_grid, bounds=bounds, squash=squash)
+				optval = self._sobol_search(optfun, n_grid, bounds=bounds, squash=squash)
 			elif search_type == SEARCH_GRID:
-				optval = self._grid_search(optfun, num_grid, bounds=bounds, squash=squash)
+				optval = self._grid_search(optfun, n_grid, bounds=bounds, squash=squash)
 			else:
 				raise Exception('search_type={} not valid'.format(search_type))
 
@@ -223,7 +296,7 @@ class BayesOpt(object):
 		gamma = (y_best - mu)/ np.sqrt(var)
 		return np.sqrt(var) * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
 
-	def _ucb(self, x, kappa):
+	def _lcb(self, x, kappa):
 		mu, var = self._gp_posterior(x)
 		return -(mu - kappa * np.sqrt(var))
 

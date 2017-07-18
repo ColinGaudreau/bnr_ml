@@ -5,12 +5,18 @@ import scipy.linalg as linalg
 import pdb
 
 class BaseSampler(object):
+	'''
+	Base class for all samplers.
+	'''
 	def sample(self, N, *args, **kwargs):
+		'''
+		Sample from the (hopefully) stationary distribution.
+		'''
 		raise NotImplementedError('sample() must be implemented in child class.')
 
 class SimpleSliceSampler(BaseSampler):
 	'''
-	Basic slice sampler, uses Gibbs sampling for higher dimensions
+	Basic slice sampler, uses Gibbs sampling for higher dimensions.
 	'''
 	def __init__(self, pdf, x0, step_out_width=.05, step_out_method='double', burnin=100, seed=1991, bounds=None, log=True):
 		if bounds is None:
@@ -41,6 +47,8 @@ class SimpleSliceSampler(BaseSampler):
 		_ = self.sample(burnin)
 	
 	def sample(self, N, verbose=False):
+		'''
+		'''
 		new_sample = np.zeros((N, self._curr_x.size))
 		
 		for i in range(N):
@@ -93,6 +101,25 @@ class SimpleSliceSampler(BaseSampler):
 class MDSliceSampler(BaseSampler):
 	'''
 	Multidimensional slice sampler, uses random eigenvectors slices for higher dimensions.
+
+	Parameters
+	----------
+	pdf : function
+		Probability density function -- can be log or not.
+	x0 : list or numpy.ndarray
+		Initial point for chain.
+	width : float (default 1.0)
+		Width of initial interval for slice sampler.
+	n_cached : int (default 1000)
+		Number of point to cache for calculating sample covariance.
+	burnin : int (default 1000)
+		Number of points for burnin.
+	seed : int (default 1991)
+		Seed for random number generator.
+	bounds : List or None (default None)
+		If `None` then no bounds, otherwise bounds on the pdf.
+	log : bool (default True)
+		Whether `pdf` is the log of the PDF.
 	'''
 	def __init__(self, pdf, x0, width=1., n_cached=1000, burnin=1000, seed=1991, bounds=None, log=True):
 		if bounds is None:
@@ -133,6 +160,23 @@ class MDSliceSampler(BaseSampler):
 		return vec, on_boundary
 
 	def sample(self, N, n_recalc=500, beta=.05):
+		'''
+		Sampler from the stationary distribution.
+
+		Parameters
+		----------
+		N : int
+			Number of samples.
+		n_recalc : int (default 500)
+			Number of iterations after which to re-calculate the covariance.
+		beta : float (default 0.05)
+			Chance that an iteration uses a random slice rather than a random eigenvector.
+
+		Returns
+		-------
+		numpy.ndarray
+			Samples from the chain.
+		'''
 		width, x_curr, n_cached = self.width, self._x_curr, self._n_cached
 
 		samples = np.zeros((N, self._dim))
