@@ -207,7 +207,7 @@ class SingleShotDetector(BaseLearningObject):
 			self._thresh = T.scalar('threshold')
 
 			predictions = None
-			for predictive_map, default_map in self._predictive_maps, self._default_maps:
+			for predictive_map, default_map in zip(self._predictive_maps, self._default_maps):
 				default_map = default_map.dimshuffle('x',0,1,2,3)
 
 				# undo-parametrization
@@ -238,16 +238,16 @@ class SingleShotDetector(BaseLearningObject):
 
 			iou_matrix = utils.iou_matrix(predictions[:,:4])
 
-			self._detect_fn = theano.function([self.input], [predictions, iou_matrix])
+			self._detect_fn = theano.function([self.input, self._thresh], [predictions, iou_matrix])
 
-		detections, iou_matrix = self._detect_fn(swap(im))
+		detections, iou_matrix = self._detect_fn(swap(im), thresh)
 
 		boxes = []
 		for i in range(detections.shape[0]):
 			cls = detections[i,-1]
 			if num_to_label is not None:
 				cls = num_to_label[cls]
-			boxes.append(BoundingBox(*detections[i,:4], cls=cls, confidence=detections[i,4]))
+			boxes.append(BoundingBox(*detections[i,:4], cls=cls, confidence=detections[i,4]) * old_size)
 
 		# boxes = []
 		# for detection, dmap in zip(detections, self._default_maps_asarray):
