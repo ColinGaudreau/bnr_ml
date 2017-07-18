@@ -71,7 +71,7 @@ def _greedy(boxes, *args, **kwargs):
                 min_box_per_region = kwargs['min_box_per_region']
 	if len(boxes) == 0:
 		return []
-	
+	stop = False
 	boxes = np.asarray(boxes)
 	conf = np.asarray([b.confidence for b in boxes])
 	conf_idx = np.argsort(conf)[::-1]
@@ -79,7 +79,7 @@ def _greedy(boxes, *args, **kwargs):
 	used_boxes = []
 	curr_box = boxes.pop(0)
 
-	while len(boxes) > 0:
+	while not stop:
 		i = 0
 		n_region = 1
 		while i < len(boxes):
@@ -93,6 +93,11 @@ def _greedy(boxes, *args, **kwargs):
 			used_boxes.append(curr_box)
 		if len(boxes) > 0:
 			curr_box = boxes.pop(0)
+		else:
+			stop = True
+	
+	if len(used_boxes) == 0:
+		used_boxes.append(curr_box)
 
 	return used_boxes
 
