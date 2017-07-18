@@ -19,6 +19,34 @@ import time
 import pdb
 
 class SSDSettings(BaseLearningSettings):
+	'''
+	Class representing settings for the SSD detector -- also serializes settings for storage in database.
+	
+	Parameters
+	----------
+	gen_fn : generator
+		Generator function for creating examples during training from properly formatted annotations.
+	train_annotations : dict
+		Formatted training annotations.
+	test_annotations : dict
+		Formatted test annotations.
+	train_args : dict
+		Arguments to be passed to `gen_fn` during trainging.
+	test_args : dict or None (default None)
+		Arguments to be passed to `gen_fn` for generating test examples -- if `None` is passed it uses `train_args`
+	print_obj : object or None (default None)
+		Class which implements a print function, if `None` is given then the standard print function is used.
+	update_fn : function (default rmsprop)
+		Function which provides the symbolic parameter update during gradient descend -- default is to use rmsprop from the lasagne library.
+	update_args : dict (default {'learning_rate': 1e-5})
+		Arguments passed to `update_fn`.
+	alpha : float (default 1.0)
+		Weight given to bounding box errors in the training objective.
+	min_iou : float (default 0.5)
+		Minimum iou to be considered a positive example in SSD.
+	hyperparameters : dict (default {})
+		Extra parameters to save in the database.
+	'''
 	def __init__(
 			self,
 			gen_fn,
@@ -62,6 +90,24 @@ class SSDSettings(BaseLearningSettings):
 		return serialization
 
 class SingleShotDetector(BaseLearningObject):
+	'''
+	Class implementing the SSD object detector.
+
+	Parameters
+	----------
+	network : dict
+		Dictionary with lasagne network layers -- a "detection" entry and "input" entry must be present in the dictionary.
+	num_classes : int
+		Number of classes in the detection problem.
+	ratios : list (default [])
+		All the aspect ratios to be used by the SSD detector.
+	smin : float (default 0.2)
+		Minimum scale for the feature maps.
+	smax : float (default 0.95)
+		Maximum scale for the feature maps.
+	seed : int (default 1991)
+		Seed for the random number generator.
+	'''
 	def __init__(
 		self,
 		network,
