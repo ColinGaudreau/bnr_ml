@@ -10,19 +10,31 @@ from skimage.transform import resize, rotate
 import pdb
 
 class StreamPrinter(object):
+	'''
+	Class which prints out to multiple streams.  Useful for doing experiments in notebooks as it will also print out to console, so if the notebook disconnects you can still see the output.
+
+	Parameters
+	----------
+	s1 : str
+		File name for stream.
+	'''
 	def __init__(self, *args):
 		self.streams = args
 
 	def println(self, str):
+		'''Print on a single line.'''
 		for stream in self.streams:
 			stream.write('%s\n' % str)
 	def write(self, str):
+		'''Use write command.'''
 		for stream in self.streams:
 			stream.write('%s' % str)
 	def close(self):
+		'''Close all streams.'''
 		for stream in self.streams:
 			stream.close()
 	def flush(self):
+		'''Flush all streams.'''
 		for stream in self.streams:
 			stream.flush()
 
@@ -46,7 +58,19 @@ def meshgrid2D(arr1, arr2):
 
 def meshgrid(*xi, **kwargs):
 	'''
-	py:function:: meshgrid(x1, x2[, x3, x4, ...])
+	Meshgrid function implemented in theano.
+
+	Parameters
+	----------
+	x1, x2, ... : numpy.ndarray
+		Lists to use for meshgrid operation.
+	flatten : bool (default=False)
+		Whether to flatten the final arrays.
+
+	Returns
+	-------
+	list
+		List of arrays for the meshgrid operation.
 	'''
 	assert(xi.__len__() > 1)
 	if 'flatten' in kwargs:
@@ -69,10 +93,14 @@ def meshgrid(*xi, **kwargs):
 
 def softmax(mat, axis=1):
 	'''	
-	axis along which to take soft max, axis \in {0,1,2,3}
+	Softmax activation function: \\frac{\exp(x_j)}{\sum_{i=0} \exp(x_i)}
 
-	Safe softmax function:
-	log f(x) = x - (x_1 + log(1 + sum_{i=2}^N exp(x_i - x_1)))
+	Parameters
+	----------
+	mat : theano.tensor
+		Theano tensor on which to do the softmax function
+	axis : int (default 1)
+		Axis along which to perform softmax operation.
 	'''
 	max_el = mat.max(axis=axis, keepdims=True)
 	logsoftmax = mat - (max_el + T.log(T.sum(T.exp(mat - max_el), axis=axis, keepdims=True)))
@@ -93,6 +121,7 @@ def load_all_layers(network_output, dirname):
 		lcnt += 1
 
 def bitwise_not(mat):
+	'''numpy bitwise_not operation in theano.'''
 	idx_true = T.eq(mat, 1)
 	idx_false = T.eq(mat, 0)
 	mat = T.set_subtensor(mat[idx_true.nonzero()], 0)
