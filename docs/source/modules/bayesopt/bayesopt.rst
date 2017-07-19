@@ -3,12 +3,12 @@
 
 .. automodule:: bnr_ml.bayesopt.bayesopt
 
+.. autodata:: SEARCH_SOBOL
+.. autodata:: SEARCH_GRID
+
+.. autodata:: ACQ_EI
+.. autodata:: ACQ_LCB
+.. autodata:: ACQ_PI
+
 .. autoclass:: BayesOpt
-	:members:
-
-.. autoattribute:: SEARCH_SOBOL
-.. autoattribute:: SEARCH_GRID
-
-.. autoattribute:: ACQ_EI
-.. autoattribute:: ACQ_LCB
-.. autoattribute:: ACQ_PI
+        :members:
