@@ -3,20 +3,30 @@ from theano import tensor as T
 
 def softmax(mat, axis=1):
 	'''	
-	axis along which to take soft max, axis \in {0,1,2,3}
+	Softmax activation function: :math:`\\frac{\exp(x_j)}{\sum_{i=0} \exp(x_i)}`.
 
-	Safe softmax function:
-	log f(x) = x - (x_1 + log(1 + sum_{i=2}^N exp(x_i - x_1)))
+	Parameters
+	----------
+	mat : theano.tensor
+		Theano tensor on which to do the softmax function
+	axis : int (default 1)
+		Axis along which to perform softmax operation.
 	'''
 	max_el = mat.max(axis=axis, keepdims=True)
 	logsoftmax = mat - (max_el + T.log(T.sum(T.exp(mat - max_el), axis=axis, keepdims=True)))
 	return T.exp(logsoftmax)
 
 def smooth_l1(val):
+	'''
+	Smooth :math:`L_1` function.
+	'''
 	cost = T.switch(T.abs_(val)<1, 0.5 * val**2, T.abs_(val) - 0.5)
 	return cost
 
 def smooth_abs(x, x0=.01):
+	'''
+	Smooth absolute value function.
+	'''
 	a1 = 1 / (2 * x0)
 	a2 = - 1 / (2 * x0)
 	b1 = x0 - a1 * x0**2
@@ -26,4 +36,7 @@ def smooth_abs(x, x0=.01):
 	return val
 
 def safe_sqrt(val, eps=1e-6):
+	'''
+	Safe square root -- if slightly negative, makes value positive.
+	'''
 	return T.sqrt(val + eps)

@@ -8,6 +8,4 @@
 
 .. autofunction:: meshgrid(x1, x2 [, x3, ..., flatten])
 
-.. autofunction:: softmax
-
 .. autofunction:: bitwise_not

@@ -7,13 +7,32 @@ import ap_nms_gpu
 import pdb
 
 METHOD_VIOLA_JONES = 'viola-jones'
+'''Use viola-jones NMS.'''
 METHOD_GREEDY = 'greedy'
+'''Use greedy NMS.'''
 METHOD_AP = 'ap'
+'''Use affinity propagation based NMS -- run on CPU.'''
 METHOD_AP_GPU = 'ap-gpu'
+'''Use affinity propagation based NMS -- run on GPU.'''
 
 def nms(boxes, *args, **kwargs):
 	'''
 	Takes list of BoundingBox objects and does non maximal suppression.
+
+	Parameters
+	----------
+	boxes : list
+		List of :class:`bnr_ml.objectdetect.utils.BoundingBox` instances on which to do NMS.
+	iou : numpy.ndarray
+		Matrix whose :math:`i,j^{th}` entry is the IOU between the :math:`i^{th}` and :math:`j^{th}` bounding box.  This is used in AP NMS.
+	method : str (default 'viola-jones')
+		Method of NMS.
+	n_apply : int (default 1)
+		Number of times to run NMS.
+	overlap : float (default 0.4)
+		Default overlap between boxes for `METHOD_VIOLA_JONES` and `METHOD_GREEDY`.
+	min_box_per_region : int (default 1)
+		Minimum number of boxes assigned to a box or region in order for it to be kept during NMS -- only applies to `METHOD_VIOLA_JONES` and `METHOD_GREEDY`.
 	'''
 	# nms for each class
 	n_apply = 1
