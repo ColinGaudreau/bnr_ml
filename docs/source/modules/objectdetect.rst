@@ -6,3 +6,4 @@
 
 	objectdetect/ssd
 	objectdetect/utils
+	objectdetect/nms
