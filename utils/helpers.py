@@ -15,7 +15,7 @@ class StreamPrinter(object):
 
 	Parameters
 	----------
-	s1 : str
+	s1, s2, ... : str
 		File name for stream.
 	'''
 	def __init__(self, *args):
