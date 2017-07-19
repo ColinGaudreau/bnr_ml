@@ -5,3 +5,4 @@
 .. toctree::
 
 	objectdetect/ssd
+	objectdetect/utils

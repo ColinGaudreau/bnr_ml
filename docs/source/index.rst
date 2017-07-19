@@ -11,6 +11,7 @@ Welcome to bnr_ml's documentation!
    :caption: Contents:
 
    modules/bayesopt
+   modules/objectdetect
 
 Indices and tables
 ==================

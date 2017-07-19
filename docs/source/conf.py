@@ -88,6 +88,12 @@ todo_include_todos = True
 
 # -- import library
 import sys
+import os
+os.environ['CUDA_HOME'] = '/Developer/NVIDIA/CUDA-7.5'
+os.environ['LD_LIBRARY_PATH'] = '/Developer/NVIDIA/CUDA-7.5/lib'
+os.environ['DYLD_LIBRARY_PATH'] = '/Developer/NVIDIA/CUDA-7.5/lib'
+os.environ['DYLD_FALLBACK_LIBRARY_PATH'] = '/Developer/NVIDIA/CUDA-7.5/lib'
+os.environ['CUDA_ROOT'] = '/Developer/NVIDIA/CUDA-7.5'
 sys.path.append('../../')
 import bayesopt.bayesopt
 
