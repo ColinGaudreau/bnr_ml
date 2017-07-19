@@ -93,7 +93,7 @@ def meshgrid(*xi, **kwargs):
 
 def softmax(mat, axis=1):
 	'''	
-	Softmax activation function: \\frac{\exp(x_j)}{\sum_{i=0} \exp(x_i)}
+	Softmax activation function: :math:`\\frac{\exp(x_j)}{\sum_{i=0} \exp(x_i)}`.
 
 	Parameters
 	----------
