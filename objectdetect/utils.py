@@ -9,7 +9,22 @@ import pdb
 
 class BoundingBox(object):
 	'''
-	Helper class for managing bounding boxes
+	Helper class for managing bounding boxes.
+
+	Parameters
+	----------
+	xi : float
+		x-coordinate of anchor point.
+	yi : float
+		y-coordinate of anchor point.
+	xf : float
+		x-coordinate of the box end.
+	yf : float
+		y-coordinate of the box end.
+	cls : str (default '')
+		Class of object.
+	confidence : float (default 0.)
+		Confidence in detection.
 	'''
 	def __init__(self, xi,yi,xf,yf, cls='', confidence=0.):
 		if xi > xf:
@@ -29,12 +44,15 @@ class BoundingBox(object):
 
 	@property
 	def w(self):
+		'''Width of box.'''
 		return self.xf - self.xi
 	@property
 	def h(self):
+		'''Height of box.'''
 		return self.yf - self.yi
 	@property
 	def size(self):
+		'''Area of box.'''
 		return self.w*self.h
 
 	def __setattr__(self, name, value):
@@ -46,6 +64,14 @@ class BoundingBox(object):
 			return super(BoundingBox, self).__setattr__(name, value)
 
 	def iou(self, box):
+		'''
+		Intersection-over-union of box with another box.
+
+		Parameters
+		----------
+		box : :class:`BoundingBox` instance
+			Box with which to calculate IOU.
+		'''
 		isec = self.intersection(box)
 		union = self.size + box.size - isec.size
 		if union > 0:
@@ -53,12 +79,28 @@ class BoundingBox(object):
 		else:
 			return 0.
 	def overlap(self, box):
+		'''
+		Find area which corresponds to overlap with another box.
+
+		Parameters
+		----------
+		box : :class:`BoundingBox` instance
+			Box with which to find overlap.
+		'''
 		if self.size > 0:
 			return self.intersection(box).size / self.size
 		else:
 			return 0.
 
 	def intersection(self, box):
+		'''
+		Find box which corresponds to intersection with another box.
+
+		Parameters
+		----------
+		box : :class:`BoundingBox` instance
+			Box with which to find intersection.
+		'''
 		new_xi = max(self.xi, box.xi)
 		new_yi = max(self.yi, box.yi)
 		new_xf = min(self.xf, box.xf)
@@ -68,12 +110,15 @@ class BoundingBox(object):
 		return BoundingBox(new_xi, new_yi, new_xf, new_yf)
 
 	def tolist(self):
+		'''Get bounding box parameters as a `list`.'''
 		return [self.xi, self.yi, self.xf, self.yf]
 
 	def tondarray(self):
+		'''Get bounding box parameters as `numpy.ndarray`, however it's parametrized using w,h rather than xf, yf.'''
 		return np.asarray([self.xi, self.yi, self.w, self.h])
 
 	def isvalid(self):
+		'''Ensure bounding box parameters correspond to valid box.'''
 		valid = True
 		valid = valid and self.w > 0 and self.h > 0
 		valid = valid and self.xf >= self.xi
@@ -81,9 +126,18 @@ class BoundingBox(object):
 		return valid
 
 	def copy(self):
+		'''Copy box.'''
 		return BoundingBox(self.xi, self.yi, self.xf, self.yf)
 
 	def subimage(self, im):
+		'''
+		Returns portion of the image corresponding to the bounding box.
+		
+		Parameters
+		----------
+		im : numpy.ndarray
+			Input image.
+		'''
 		xi = max(0, self.xi)
 		yi = max(0, self.yi)
 		xf = min(im.shape[1], self.xf)
@@ -94,9 +148,6 @@ class BoundingBox(object):
 	def round(self):
 		self.xi, self.yi, self.xf, self.yf = round(self.xi), round(self.yi), round(self.xf), round(self.yf)
 
-	'''
-	Override operator for easier use of BoundingBox class
-	'''
 
 	def __str__(self):
 		if self.cls == '':
