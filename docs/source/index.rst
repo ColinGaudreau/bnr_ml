@@ -12,6 +12,7 @@ Welcome to bnr_ml's documentation!
 
    modules/bayesopt
    modules/objectdetect
+   modules/logger
 
 Indices and tables
 ==================
