@@ -7,12 +7,23 @@ import cPickle as pickle
 import pdb
 
 class BasicExperiment(object):
+	'''
+	Object which manages loading, storing models. Keeping track of experiment hyperparametes.  Saving training information.
+
+	Parameters:
+	learning_object : :class:`bnr_ml.logger.learning_objects.BaseLearningObject` instance
+		Class representing model that's used.
+	db_setting : dict
+		Settings dictionary for database.
+	store_weights_in_db : bool (default True)
+		Whether to store model weights directly in database, or store it in a hidden file and store the file location in the database.
+	'''
 	def __init__(
 			self,
 			learning_object,
 			db_settings=db.default_settings,
 			use_db=True,	
-			store_weights_in_db=False
+			store_weights_in_db=True
 		):
 		assert(issubclass(learning_object.__class__, learning_objects.BaseLearningObject))
 		self.learning_object = learning_object
@@ -43,10 +54,22 @@ class BasicExperiment(object):
 		Train the learning object, save the train/test error every iteration.  Every few
 		iterations save the weights of the network.
 
-		Parameters:
+		Parameterss
 		----------
-		iterations - Number of iterations for which to train.
-		save_weights_every - Save weights every x iterations. 
+		iterations : int
+			Number of training iterations
+		settings : :class:`bnr_ml.logger.learning_objects.BaseLearningSettings` instance
+			Settings for training -- includes hyperparameters, and anything that might want to be stored in the database.
+		save_weights_every : int (default 10)
+			Save the model weights in the database ever specified iterations.
+		note : str (default '')
+			Note to store in the database before training; could be some general description of the experiment.
+		early_stopping : bool (default True)
+			Not function yet.
+		stopping_window : int (default 10)
+			Has to do with `early_stopping`; not functional yet.
+		begin_new : bool (default False)
+			Whether to create new databaes entry or keep old one -- may be useful if you're restarting training from scratch.
 		'''
 		
 		self.learning_object.settings = settings
@@ -112,10 +135,12 @@ class BasicExperiment(object):
 		return np.asarray(train_errors), np.asarray(test_errors)
 
 	def get_train_error(self):
+		'''Get training error from database.'''
 		results = self._session.query(db.TrainingResult).filter(db.TrainingResult.experiment_id == self.experiment.id).all()
 		return np.asarray([r.train_error for r in results])
 
 	def get_test_error(self):
+		'''Get test error from database.'''
 		results = self._session.query(db.TrainingResult).filter(db.TrainingResult.experiment_id == self.experiment.id).all()
 		return np.asarray([r.test_error for r in results])
 
@@ -123,6 +148,13 @@ class BasicExperiment(object):
 		'''
 		Load experiment, and set iteration to latest one.  Load weights into learning object unless
 		otherwise specified.
+
+		Parameters
+		----------
+		experiment_id : int
+			id in database of experiment you're wanting to load.
+		load_model : bool (default True)
+			Set weights in the model from the weights in the database.
 		'''
 		self.experiment = self._session.query(db.Experiment).filter(db.Experiment.id == experiment_id).first()
 		last_result = self._session.query(db.TrainingResult).filter(db.TrainingResult.experiment_id == self.experiment.id).order_by(sqlalchemy.desc(db.TrainingResult.iteration)).first()
@@ -135,6 +167,9 @@ class BasicExperiment(object):
 			self.load_model()
 
 	def save_experiment(self):
+		'''
+		Save experiment in database.
+		'''
 		weights = self.learning_object.get_weights()
 		if self.store_weights_in_db:
 			self.experiment.weights = pickle.dumps(weights, protocol=pickle.HIGHEST_PROTOCOL)
@@ -155,6 +190,7 @@ class BasicExperiment(object):
 			self.learning_object.load_model(weights)
 
 	def delete(self):
+		'''Delete database entry for current experiment -- includes all the TrainingResult instances.'''
 		if self.experiment is not None:
 			results = self._session.query(db.TrainingResult).filter(db.TrainingResult.experiment_id == self.experiment.id).all()
 			for result in results:

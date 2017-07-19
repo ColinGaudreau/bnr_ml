@@ -11,19 +11,33 @@ import paramiko
 
 import pdb
 
+
 default_settings = {
 	'db': 'postgresql+psycopg2',
 	'name': 'testdb2',
 	'host': '130.179.130.0',
 	'user': 'colingaudreau',
-	'password': 'Ee45dij7',
-	'sftp_password': 'JYRq7Pau', # password for hosting maching
-    'weights_dir': '/Users/colingaudreau/.bnr_ml' # assumed to be on same machine as db
+	'password': '',
+	'sftp_password': '', # password for hosting maching
+    'weights_dir': '' # assumed to be on same machine as db
 }
 
 this = globals()
 
 def create_database_connection(settings):
+	'''
+	Connect to database.
+
+	Parameters
+	----------
+	settings : dict
+		`dict` for settings of database, should have database dtype, name, host, user, password.
+
+	Returns
+	-------
+	sqlalchemy.Session
+		Session for interacting with database.
+	'''
 	if 'db' not in settings:
 		raise Exception('blah')
 	if 'name' not in settings:
@@ -57,12 +71,23 @@ def _sftp_remove(sftp, filename):
 		pass
 
 def get_weight_file(experiment, settings):
+	'''
+	Return weights given experiment and settings file.
+
+	experiment : :class:`bnr_ml.logger.experiments.BasicExperiment` intance
+		Experiment object for which you want the model weights.
+	settings : dict
+		Settings dictionary.
+	'''
 	weight_dir = settings['weights_dir']
 	if weight_dir[-1] != '/':
 		weight_dir += '/'
 	return weight_dir + settings['name'] + '/experiment_{}_weights.bnr'.format(experiment.id)
 
 def save_weights(experiment, weights, settings):
+	'''
+	Save weights from experiment with weights and settings.
+	'''
 	weight_dir = settings['weights_dir']
 	if weight_dir[-1] != '/':
 		weight_dir += '/'
@@ -95,6 +120,9 @@ def save_weights(experiment, weights, settings):
 	return
 
 def load_weights(experiment, settings, weights_in_db=False):
+	'''
+	Load weights for database.
+	'''
 	if experiment.weights is not None and weights_in_db:
 		return pickle.loads(experiment.weights)
 
@@ -138,10 +166,16 @@ def load_tables(settings=default_settings):
 	this['TrainingResult'], this['Experiment'] =  tr, e
 
 def get_engine(settings=default_settings):
+	'''
+	Get engine for connecting to database.
+	'''
 	engine = create_database_connection(settings)
 	return engine
 
 def create_session(settings=default_settings):
+	'''
+	Create session for database connection.
+	'''
 	engine = get_engine(settings)
 	Session = sessionmaker()
 	Session.configure(bind=engine)

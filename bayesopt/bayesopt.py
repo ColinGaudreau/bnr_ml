@@ -12,11 +12,16 @@ import pdb
 
 # define constants
 SEARCH_SOBOL = 0
+'''Use sobol search when optimizing acquisition.'''
 SEARCH_GRID = 1
+'''Use grid search when optimizing acquisition -- uses random shifts of grid to get better coverage.'''
 
 ACQ_EI = 0
+'''Use EI as the acquisition function'''
 ACQ_LCB = 1
+'''Use LCB as the acquisition function'''
 ACQ_PI = 2
+'''Use PI as the acquisition function'''
 
 class BayesOpt(object):
 	'''

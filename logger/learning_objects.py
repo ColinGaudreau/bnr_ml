@@ -1,34 +1,32 @@
 import pdb
 
 class BaseLearningSettings(object):
+	'''Base class for all learning settings objects.'''
 	def serialize(self):
+		'''Get dictionary of all the informaton you want stored in the database.'''
 		return self.__dict__
 
 class BaseLearningObject(object):
+	'''Base class for all learning objects.'''
 	def __init__(self):
 		self.settings = BaseLearningSettings()
 		self._hyperparameters = []
 
 	def train(self, *args, **kwargs):
+		'''Train model.'''
 		raise NotImplementedError()
 
 	def get_weights(self):
-		'''
-		This should return weights
-		'''
+		'''Get weights of model.'''
 		raise NotImplementedError()
 
 	def get_hyperparameters(self):
-		'''
-		This should return a dictionary of hyperparameters
-		'''
+		'''Get hyperparameters of model.'''
 		self._hyperparameters.append(self.settings.serialize())
 		return self._hyperparameters
 
 	def get_architecture(self):
-		'''
-		This should return a dictionary describing the network architecture
-		'''
+		'''Get architectrue of model.'''
 		raise NotImplementedError
 
 	def load_model(self, weights):
