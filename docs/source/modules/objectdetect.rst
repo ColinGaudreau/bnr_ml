@@ -4,6 +4,7 @@
 .. automodule:: bnr_ml.objectdetect
 .. toctree::
 
+	objectdetect/fastrcnn
 	objectdetect/ssd
-	objectdetect/utils
 	objectdetect/nms
+	objectdetect/utils

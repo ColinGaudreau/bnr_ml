@@ -333,6 +333,19 @@ def draw_coord(im, coords, color=(255,255,255), label_map=None):
 		return im
 
 def iou_matrix(preds):
+	'''
+	Calculate iou matrix for a list of predictions.
+
+	Parameters
+	----------
+	preds : theano.tensor
+		:math:`N \\times 4` `theano.tensor` list of bounding box parameters parameterized as :math:`(x_i, y_i, x_f, y_f)`.
+
+	Returns
+	-------
+	theano.tensor
+		Matrix of IOU values.
+	'''
 	idx1, idx2 = meshgrid(T.arange(preds.shape[0]), T.arange(preds.shape[0]))
 	preds1, preds2 = preds[idx1,:], preds[idx2,:]
 	

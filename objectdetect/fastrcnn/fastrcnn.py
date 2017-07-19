@@ -35,6 +35,32 @@ from tqdm import tqdm
 import dlib
 
 class FastRCNNSettings(BaseLearningSettings):
+	'''
+	:class:`bnr_ml.logger.learning_objects.BaseLearningSettings` subclass for dealing with the Fast R-CNN settings.
+
+	Parameters
+	----------
+	train_annotations : list
+		Formatted training annotations.
+	test_annotations : list
+		Formatted test annotations.
+	train_args : dict
+		Args fed to the data generator for the training annotations.
+	test_args : dict
+		Args fed to the data generator for the test annotations.
+	data_generator : function (default :function:`bnr_ml.objectdetect.fastrcnn.fastrcnn.generate_data`)
+		Data generating function.
+	print_obj : object (default :class:`bnr_ml.utils.helpers.StreamPrinter(open('/dev/stdout','w'))`)
+		Object which implements a `print` function.
+	update_fn : function (default rmsprop)
+		Update for SGD -- default is rmsprop from lasagne.
+	update_args : dict (default {'learning_rate': 1e-5})
+		Args passed to the update_fn
+	lmbda : float (default 1.0)
+		Weight given to coordinate loss in the Fast R-CNN loss function.
+	hyperparameters : dict (default {})
+		Hyperparameters that you want stored in the database.
+	'''
 	def __init__(
 			self,
 			train_annotations,
@@ -71,12 +97,14 @@ class FastRCNNSettings(BaseLearningSettings):
 
 class FastRCNNDetector(BaseLearningObject, BaseDetector):
 	'''
-		network should have an:
-			input: this is the input layer
-			detect: FC Layer for detections
-			roi_layer: ROI layer
-			localize: FC Layer for localization
+	:class:`bnr_ml.logger.learning_objects.BaseLearningObject` subclass implementing the Fast R-CNN model.
 
+	Parameters
+	----------
+	network : dict
+		Dictionary with the neural network layers implemented using lasagne.  Must have "detect", "localize", and "roi_layer" entries.
+	num_classes : int
+		Number of classes in object detection problem.
 	'''
 	def __init__(
 		self,
@@ -158,6 +186,7 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 		self.set_params(weights)
 
 	def train(self):
+		''''''
 		# get settings for settings object
 		train_annotations = self.settings.train_annotations
 		test_annotations = self.settings.test_annotations
@@ -266,6 +295,30 @@ class FastRCNNDetector(BaseLearningObject, BaseDetector):
 			num_to_label=None,
 			return_iou=False
 		):
+		'''
+		Detect object in an image.
+
+		Parameters
+		----------
+		im : numpy.ndarray
+			Input image.
+		thresh : float (default 0.5)
+			Threshold value for confidence in detections.
+		kvals : tuple (default (30, 200, 3))
+			`k` values used in the graph-based segmentation used in selective search -- this tuple is fed into the `linspace` function.
+		max_dim : int (default 600)
+			At the start, the image is resized to have `max_dim` be the new largest dimension size.
+		min_w : int (default 10)
+			Filter proposal regions with `w` smaller than `min_w`.
+		min_h : int (default 10)
+			Filter proposal regions with `h` smaller than `min_h`.
+		max_ratio : int (default 2)
+			Filter proposal regions whose `w` to `h` ratio is greater than `max_ratio`.
+		min_size : int (default 100)
+			Filter proposal regions smaller than `min_size`.
+		max_regions : int (default 1000)
+			Maximum number of proposal regions.
+		'''
 		if im.shape.__len__() == 2:
 			im = np.repeat(im.reshape(im.shape + (1,)), 3, axis=2)
 		if im.shape[2] > 3:

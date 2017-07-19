@@ -15,9 +15,6 @@ import cv2
 import pdb
 
 def generate_examples_for_annotations(annotations, n_box=20, n_neg=400, easy=.2, n_pos=400, verbose=True):
-	'''
-	easy: fraction of negative examples which are considered "easy"
-	'''
 	examples = []
 	for i in range(annotations.__len__()):
 		imsize = annotations[i]['size']

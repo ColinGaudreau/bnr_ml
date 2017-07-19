@@ -311,17 +311,38 @@ class PyCUDAROIPoolGrad(theano.Op):
 		return thunk
 	
 def roi_pool(x, boxes, shape):
+	'''
+	Theano operation for ROI pooling -- uses custom PyCUDA code under the hood.
+
+	Parameters
+	----------
+	x : theano.tensor.tensor4
+		Input feature map -- `x`.shape = (number of images, number of channels, height, width).
+	boxes : theano.tensor.tensor3
+		Input boxes -- `boxes`.shape = (number of images, number of regions, 4)
+	shape : tuple
+		What size do you want to reshape the input
+
+	Returns
+	-------
+	theano.tensor.tensor4
+		ROI pooled feature map with shape (number of image :math:`\\times` number of regions, number of channels, shape[0], shape[1]).
+	'''
 	return PyCUDAROIPool(shape)(x, boxes)
 
 
 class ROILayer(Layer):
 	'''
-	Lasagne layer for the ROI pooling layer
+	Lasagne layer for the ROI pooling layer.
 
-	Params:
-	------
-	input - input tensor4
-	boxes - boxes tensor3
+	Parameters
+	----------
+	incoming : lasagne.layers.BaseLayer
+		Incoming layer.
+	shape : tuple
+		Shape of ROI pooling.
+	boxes : theano.tensor.tensor3, or None (default None)
+		Theano symbolic variable for the boxes
 	'''
 
 	def __init__(self, incoming, shape, boxes=None, **kwargs):
