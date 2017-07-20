@@ -48,7 +48,7 @@ class FastRCNNSettings(BaseLearningSettings):
 		Args fed to the data generator for the training annotations.
 	test_args : dict
 		Args fed to the data generator for the test annotations.
-	data_generator : function (default :function:`bnr_ml.objectdetect.fastrcnn.fastrcnn.generate_data`)
+	data_generator : function (default :py:func:`bnr_ml.objectdetect.fastrcnn.fastrcnn.generate_data`)
 		Data generating function.
 	print_obj : object (default :class:`bnr_ml.utils.helpers.StreamPrinter(open('/dev/stdout','w'))`)
 		Object which implements a `print` function.
